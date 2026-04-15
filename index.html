@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a0e17">
 <title>Cheema Family Hub</title>
-<!-- v2 -->
+<!-- v3 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -72,7 +72,7 @@ header{background:rgba(10,14,23,.85);border-bottom:1px solid var(--brd);padding:
 
 /* TABS */
 .tabs-row{display:flex;align-items:flex-end}
-.tab-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 0 12px;border:none;background:transparent;font-size:12px;font-weight:600;cursor:pointer;letter-spacing:-.1px;transition:color .2s,background .2s;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 0 12px;border:none;background:transparent;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:-.1px;transition:color .2s,background .2s;border-bottom:3px solid transparent;margin-bottom:-1px}
 .tab-cnt{font-size:9px;font-weight:700;border-radius:12px;padding:2px 7px;transition:all .2s;letter-spacing:.2px}
 .sort-wrap{padding:0 0 12px 8px;flex-shrink:0}
 .sort-sel{padding:5px 10px;border-radius:8px;background:var(--surf2);font-size:10px;font-weight:700;outline:none;cursor:pointer;border-width:1.5px;border-style:solid;appearance:none;-webkit-appearance:none;letter-spacing:-.1px}
@@ -151,7 +151,7 @@ header{background:rgba(10,14,23,.85);border-bottom:1px solid var(--brd);padding:
 .footer-txt{font-size:10px;color:var(--muted);font-weight:500;letter-spacing:.1px}
 
 /* Accent bar */
-.accent-strip{height:1px;margin:14px 14px 0;border-radius:1px;opacity:.5}
+.accent-strip{height:3px;margin:0;border-radius:0;opacity:1}
 </style>
 </head>
 <body>
@@ -222,14 +222,14 @@ const MEMBERS=[
   {name:'Rajan(Midget)',initials:'R',color:'#10b981'},
 ];
 const URGENCY=[
-  {label:'Low',color:'#10b981',ring:'#6ee7b7'},
-  {label:'Medium',color:'#f59e0b',ring:'#fbbf24'},
-  {label:'High',color:'#f43f5e',ring:'#fca5a5'},
+  {label:'Low',color:'#22d3ee',ring:'#67e8f9'},
+  {label:'Medium',color:'#facc15',ring:'#fde047'},
+  {label:'High',color:'#e879f9',ring:'#f0abfc'},
 ];
 const TABS_CFG=[
   {key:'shop',label:'Shopping',accent:'#00d4c8'},
   {key:'todo',label:'To-Do',accent:'#7c6fff'},
-  {key:'notes',label:'Notes',accent:'#ff7b4f'},
+  {key:'notes',label:'Messages',accent:'#ff7b4f'},
 ];
 const SORTS=[
   {key:'recency-desc',label:'Newest'},{key:'recency-asc',label:'Oldest'},
@@ -347,7 +347,7 @@ function selectMember(name){
 
 function renderTabs(){
   const acc=TABS_CFG[tabIdx].accent;
-  document.querySelector('header').style.borderBottomColor=acc+'33';
+  document.querySelector('header').style.borderBottomColor=acc;
   const wrap=document.getElementById('tabs');
   const sc=state.shop.filter(x=>!x.done).length;
   const tc=state.todo.filter(x=>!x.done).length;
@@ -356,7 +356,7 @@ function renderTabs(){
     const active=tabIdx===i;
     const cnt=i===0?sc:i===1?tc:0;
     return`<button class="tab-btn" onclick="setTab(${i})"
-      style="color:${active?t.accent:'#3d5068'};border-bottom-color:${active?t.accent:'transparent'};${active?`background:${t.accent}0a`:''}">
+      style="color:${active?t.accent:'#3d5068'};border-bottom-color:${active?t.accent:'transparent'};${active?`background:${t.accent}18`:''}">
       ${esc(t.label)}
       ${cnt>0?`<span class="tab-cnt" style="background:${active?t.accent+'22':'#161f30'};color:${active?t.accent:'#3d5068'};border:1px solid ${active?t.accent+'40':'#1e2d47'}">${cnt}</span>`:''}
     </button>`;
@@ -469,16 +469,16 @@ function renderNotes(){
   const acc=TABS_CFG[2].accent;
   const me=getMember(member);
   const notesHTML=state.notes.length===0
-    ?`<div class="empty"><div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#253858" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div class="empty-text">No notes yet</div><div class="empty-sub">Leave a message for the family</div></div>`
+    ?`<div class="empty"><div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#253858" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div class="empty-text">No messages yet</div><div class="empty-sub">Send a message above</div></div>`
     :state.notes.map(note=>{
       const auth=getMember(note.author);const isMe=note.author===member;
       return`<div class="note-wrap ${isMe?'mine':'theirs'}">
         <div class="note-header" style="flex-direction:${isMe?'row-reverse':'row'}">
-          <div class="avatar" style="width:24px;height:24px;font-size:9px;color:${auth.color};background:${auth.color}18;border:1.5px solid ${auth.color}45">${auth.initials}</div>
-          <span class="note-author" style="color:${auth.color}">${esc(note.author)}</span>
+          <div class="avatar" style="width:30px;height:30px;font-size:11px;color:${auth.color};background:${auth.color}22;border:2px solid ${auth.color}66">${auth.initials}</div>
+          <span class="note-author" style="color:${auth.color};font-size:13px;font-weight:800">${esc(note.author)}</span>
           <span class="note-time">${timeAgo(note.ts)}</span>
         </div>
-        <div class="note-bubble" style="background:${isMe?auth.color+'15':'#111827'};border-color:${isMe?auth.color+'30':'#1e2d47'};border-radius:${isMe?'16px 4px 16px 16px':'4px 16px 16px 16px'}">
+        <div class="note-bubble" style="background:${isMe?auth.color+'20':'#161f30'};border-color:${isMe?auth.color+'50':'#1e2d47'};border-radius:${isMe?'16px 4px 16px 16px':'4px 16px 16px 16px'};${isMe?'':'border-left:3px solid '+auth.color+'66'}">
           <div class="note-text">${esc(note.text)}</div>
         </div>
         ${isMe?`<button class="note-delete" onclick="delNote('${note.id}')">Delete</button>`:''}
@@ -486,13 +486,13 @@ function renderNotes(){
     }).join('');
   return`
     <div class="notes-compose" style="border-top-color:${acc}55;border-top-width:2px">
-      <textarea class="notes-textarea" id="note-input" placeholder="Write a note to the family…" rows="3" style="caret-color:${acc}"></textarea>
+      <textarea class="notes-textarea" id="note-input" placeholder="Write a message to the family…" rows="3" style="caret-color:${acc}"></textarea>
       <div class="notes-footer">
         <div class="notes-as">
-          <div class="avatar" style="width:20px;height:20px;font-size:8px;color:${me.color};background:${me.color}18;border:1.5px solid ${me.color}45">${me.initials}</div>
+          <div class="avatar" style="width:22px;height:22px;font-size:9px;color:${me.color};background:${me.color}22;border:1.5px solid ${me.color}55">${me.initials}</div>
           as <b style="color:${me.color};font-weight:700">${esc(member)}</b>
         </div>
-        <button class="post-btn" id="post-btn" style="background:${acc};box-shadow:0 4px 16px ${acc}44">Post</button>
+        <button class="post-btn" id="post-btn" style="background:${acc};box-shadow:0 2px 6px ${acc}28">Post</button>
       </div>
     </div>
     <div class="notes-feed">${notesHTML}</div>
