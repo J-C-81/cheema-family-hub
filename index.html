@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0e17">
+<title>Cheema Family Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+:root{
+  --bg:#0a0e17;
+  --surf:#111827;
+  --surf2:#161f30;
+  --surf3:#1c2840;
+  --brd:#1e2d47;
+  --brd2:#253858;
+  --text:#f1f5f9;
+  --sub:#7c8fa8;
+  --muted:#3d5068;
+  --shop:#00d4c8;
+  --todo:#7c6fff;
+  --notes:#ff7b4f;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;overscroll-behavior:none;overflow-x:hidden}
+button,input,textarea,select{font-family:'Inter',sans-serif}
+input::placeholder,textarea::placeholder{color:var(--muted)}
+::-webkit-scrollbar{display:none}
+.screen{display:none;min-height:100vh;min-height:100dvh}
+.screen.active{display:flex;flex-direction:column}
+
+/* LOADING */
+#loading{align-items:center;justify-content:center;gap:14px;flex-direction:column;background:var(--bg)}
+.spinner{width:28px;height:28px;border-radius:50%;border:2.5px solid #00d4c820;border-top-color:#00d4c8;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* LOGIN */
+#login{align-items:center;justify-content:center;padding:32px 20px;background:var(--bg);position:relative;overflow:hidden}
+.login-glow-1{position:fixed;top:-20%;left:-10%;width:55%;height:55%;background:radial-gradient(ellipse,rgba(0,212,200,.06) 0%,transparent 70%);pointer-events:none}
+.login-glow-2{position:fixed;bottom:-15%;right:-5%;width:50%;height:50%;background:radial-gradient(ellipse,rgba(124,111,255,.06) 0%,transparent 70%);pointer-events:none}
+.login-card{position:relative;z-index:1;background:var(--surf);border-radius:28px;border:1px solid var(--brd);box-shadow:0 32px 80px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.04);padding:32px 24px;width:100%;max-width:330px}
+.brand{display:flex;align-items:center;gap:13px;margin-bottom:26px}
+.brand-icon{width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,#00d4c8,#7c6fff);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,212,200,.25),inset 0 1px 0 rgba(255,255,255,.15);flex-shrink:0}
+.brand-name{font-size:18px;font-weight:800;letter-spacing:-.6px;color:var(--text)}
+.brand-sub{font-size:11px;color:var(--sub);margin-top:3px;font-weight:500;letter-spacing:.1px}
+.card-divider{height:1px;background:linear-gradient(90deg,transparent,var(--brd),transparent);margin:0 0 22px}
+.section-label{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:13px}
+.member-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.member-btn{display:flex;flex-direction:column;align-items:center;gap:10px;background:var(--surf2);border:1px solid var(--brd);border-radius:18px;padding:20px 10px 16px;cursor:pointer;transition:border-color .18s,background .18s,transform .1s,box-shadow .18s;position:relative}
+.member-btn:active{transform:scale(.95)}
+.member-name{font-size:13px;font-weight:600;color:var(--text);letter-spacing:-.1px}
+.avatar{border-radius:30%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;user-select:none;letter-spacing:-.5px}
+
+/* APP HEADER */
+header{background:rgba(10,14,23,.85);border-bottom:1px solid var(--brd);padding:14px 16px 0;position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}
+.header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.header-brand{display:flex;align-items:center;gap:9px}
+.header-icon{width:29px;height:29px;border-radius:9px;background:linear-gradient(145deg,#00d4c8,#7c6fff);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,212,200,.2)}
+.header-eyebrow{font-size:8.5px;font-weight:700;color:var(--muted);letter-spacing:1.8px;text-transform:uppercase}
+.header-title{font-size:15px;font-weight:800;letter-spacing:-.4px;line-height:1.1;color:var(--text)}
+.header-right{display:flex;align-items:center;gap:8px}
+.status-pill{display:flex;align-items:center;gap:5px;padding:4px 9px;background:var(--surf2);border-radius:20px;border:1px solid var(--brd)}
+.status-dot{width:5px;height:5px;border-radius:50%;transition:background .4s,box-shadow .4s}
+.status-txt{font-size:9px;font-weight:600;color:var(--sub);letter-spacing:.2px}
+.member-chip{display:flex;align-items:center;gap:7px;background:var(--surf2);border:1px solid var(--brd);border-radius:20px;padding:5px 11px 5px 6px;cursor:pointer;transition:opacity .15s}
+.member-chip:active{opacity:.7}
+.chip-name{font-size:11px;font-weight:600;color:var(--sub);letter-spacing:-.1px}
+
+/* TABS */
+.tabs-row{display:flex;align-items:flex-end}
+.tab-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 0 12px;border:none;background:transparent;font-size:12px;font-weight:600;cursor:pointer;letter-spacing:-.1px;transition:color .2s,background .2s;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab-cnt{font-size:9px;font-weight:700;border-radius:12px;padding:2px 7px;transition:all .2s;letter-spacing:.2px}
+.sort-wrap{padding:0 0 12px 8px;flex-shrink:0}
+.sort-sel{padding:5px 10px;border-radius:8px;background:var(--surf2);font-size:10px;font-weight:700;outline:none;cursor:pointer;border-width:1.5px;border-style:solid;appearance:none;-webkit-appearance:none;letter-spacing:-.1px}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* Input card */
+.input-card{margin:14px 14px 0;background:var(--surf);border-radius:18px;overflow:hidden;border:1px solid var(--brd);box-shadow:0 8px 32px rgba(0,0,0,.25)}
+.input-row{display:flex;align-items:center;border-bottom:1px solid var(--brd)}
+.main-input{flex:1;padding:14px 15px;border:none;background:transparent;font-size:15px;font-weight:500;outline:none;color:var(--text);letter-spacing:-.2px}
+.add-btn{margin:7px;padding:9px 18px;border-radius:11px;border:none;font-weight:700;font-size:13px;color:white;letter-spacing:-.1px;transition:transform .12s,opacity .12s;white-space:nowrap;flex-shrink:0}
+.add-btn:active{transform:scale(.93);opacity:.85}
+.urg-row{display:flex;align-items:center;gap:6px;padding:8px 12px 9px}
+.urg-label{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1.2px;text-transform:uppercase;flex-shrink:0;margin-right:2px}
+.urg-btn{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-weight:600;font-size:11px;flex-shrink:0;transition:all .15s;cursor:pointer;border-width:1.5px;border-style:solid;letter-spacing:-.1px}
+.urg-btn:active{transform:scale(.93)}
+.urg-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+
+/* Filter */
+.filter-row{display:flex;align-items:center;gap:6px;padding:12px 14px 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.filter-btn{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;flex-shrink:0;font-weight:600;font-size:11px;cursor:pointer;transition:all .15s;white-space:nowrap;border-width:1.5px;border-style:solid;letter-spacing:-.1px}
+.filter-btn:active{transform:scale(.93)}
+
+/* List */
+.count-line{padding:12px 16px 4px;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.1px}
+.list-wrap{padding:4px 14px 0}
+@keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.item{display:flex;align-items:center;gap:12px;background:var(--surf);border-radius:16px;padding:13px 14px;margin-bottom:8px;border:1px solid var(--brd);border-left-width:3px;animation:slideIn .18s ease both;position:relative;overflow:hidden}
+.item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:80px;background:linear-gradient(90deg,var(--glow,transparent),transparent);pointer-events:none;opacity:.6}
+.item-check{width:22px;height:22px;border-radius:8px;border:1.5px solid;background:transparent;cursor:pointer;flex-shrink:0;padding:0;transition:all .2s;display:flex;align-items:center;justify-content:center}
+.item-check:active{transform:scale(.88)}
+.item-text{font-size:14px;font-weight:500;color:var(--text);word-break:break-word;line-height:1.45;letter-spacing:-.2px}
+.item-meta{display:flex;align-items:center;gap:5px;margin-top:6px;flex-wrap:wrap}
+.meta-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;letter-spacing:.1px}
+.meta-time{font-size:10px;color:var(--muted);font-weight:500;letter-spacing:.1px}
+.del-btn{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:2px 4px;line-height:1;border-radius:6px;transition:color .15s;flex-shrink:0;opacity:.6}
+.del-btn:active{color:#f43f5e;opacity:1}
+.done-section{padding:0 14px}
+.done-sep{height:1px;background:var(--brd);margin:12px 0 0}
+.done-header{display:flex;justify-content:space-between;align-items:center;padding:12px 0 10px}
+.done-title{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase}
+.clear-btn{font-size:11px;font-weight:600;color:var(--sub);background:var(--surf2);border:1px solid var(--brd);cursor:pointer;padding:5px 10px;border-radius:8px;transition:all .15s;letter-spacing:-.1px}
+.clear-btn:active{opacity:.7}
+.item.done{opacity:.38}
+.item-text.done-text{text-decoration:line-through;color:var(--sub)}
+
+/* Empty */
+.empty{text-align:center;padding:56px 0 32px}
+.empty-icon{width:52px;height:52px;border-radius:16px;background:var(--surf2);border:1px solid var(--brd);display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.empty-text{font-size:14px;font-weight:600;color:var(--sub);letter-spacing:-.2px}
+.empty-sub{font-size:12px;color:var(--muted);margin-top:5px;letter-spacing:-.1px}
+
+/* Notes */
+.notes-compose{margin:14px 14px 0;background:var(--surf);border-radius:18px;overflow:hidden;border:1px solid var(--brd);box-shadow:0 8px 32px rgba(0,0,0,.25)}
+.notes-compose-top{border-width:2px;border-style:solid;border-bottom:none;border-radius:18px 18px 0 0;margin:-1px -1px 0}
+.notes-textarea{width:100%;padding:14px 15px;border:none;background:transparent;font-size:14px;font-weight:500;outline:none;color:var(--text);resize:none;display:block;line-height:1.6;letter-spacing:-.2px}
+.notes-footer{display:flex;align-items:center;justify-content:space-between;padding:9px 12px 12px;border-top:1px solid var(--brd)}
+.notes-as{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--sub);font-weight:500}
+.post-btn{padding:8px 18px;border-radius:11px;border:none;font-weight:700;font-size:12px;color:white;transition:transform .12s,opacity .12s;letter-spacing:-.1px}
+.post-btn:active{transform:scale(.93);opacity:.85}
+.notes-feed{padding:14px 14px 0}
+.note-wrap{margin-bottom:18px;display:flex;flex-direction:column;animation:slideIn .18s ease both}
+.note-wrap.mine{align-items:flex-end}
+.note-wrap.theirs{align-items:flex-start}
+.note-header{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.note-author{font-size:11px;font-weight:700;letter-spacing:-.1px}
+.note-time{font-size:10px;color:var(--muted);font-weight:500}
+.note-bubble{max-width:82%;padding:11px 14px;border:1px solid}
+.note-text{font-size:14px;font-weight:500;color:var(--text);line-height:1.55;white-space:pre-wrap;word-break:break-word;letter-spacing:-.2px}
+.note-delete{font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;margin-top:5px;font-weight:500;padding:2px 4px}
+
+/* Footer */
+.footer{display:flex;align-items:center;justify-content:center;gap:6px;padding:28px 0 16px}
+.footer-dot{width:5px;height:5px;border-radius:50%}
+.footer-txt{font-size:10px;color:var(--muted);font-weight:500;letter-spacing:.1px}
+
+/* Accent bar */
+.accent-strip{height:1px;margin:14px 14px 0;border-radius:1px;opacity:.5}
+</style>
+</head>
+<body>
+
+<div id="loading" class="screen active">
+  <div class="spinner"></div>
+</div>
+
+<div id="login" class="screen">
+  <div class="login-glow-1"></div>
+  <div class="login-glow-2"></div>
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">Cheema Family</div>
+        <div class="brand-sub">Your shared family hub</div>
+      </div>
+    </div>
+    <div class="card-divider"></div>
+    <div class="section-label">Who are you?</div>
+    <div class="member-grid" id="member-grid"></div>
+  </div>
+</div>
+
+<div id="app" class="screen">
+  <header>
+    <div class="header-top">
+      <div class="header-brand">
+        <div class="header-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <div>
+          <div class="header-eyebrow">Cheema Family</div>
+          <div class="header-title">Family Hub</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="status-pill">
+          <div class="status-dot" id="status-dot"></div>
+          <div class="status-txt" id="status-txt">Live</div>
+        </div>
+        <button class="member-chip" onclick="showLogin()">
+          <div class="avatar" id="header-avatar"></div>
+          <span class="chip-name" id="header-name"></span>
+        </button>
+      </div>
+    </div>
+    <div class="tabs-row" id="tabs"></div>
+  </header>
+  <div class="content" id="content"></div>
+</div>
+
+<script>
+const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
+const MEMBERS=[
+  {name:'Mum',initials:'M',color:'#f43f5e'},
+  {name:'Dad',initials:'D',color:'#3b82f6'},
+  {name:'Jiv',initials:'J',color:'#f97316'},
+  {name:'Rajan(Midget)',initials:'R',color:'#10b981'},
+];
+const URGENCY=[
+  {label:'Low',color:'#10b981',ring:'#6ee7b7'},
+  {label:'Medium',color:'#f59e0b',ring:'#fbbf24'},
+  {label:'High',color:'#f43f5e',ring:'#fca5a5'},
+];
+const TABS_CFG=[
+  {key:'shop',label:'Shopping',accent:'#00d4c8'},
+  {key:'todo',label:'To-Do',accent:'#7c6fff'},
+  {key:'notes',label:'Notes',accent:'#ff7b4f'},
+];
+const SORTS=[
+  {key:'recency-desc',label:'Newest'},{key:'recency-asc',label:'Oldest'},
+  {key:'alpha-asc',label:'A–Z'},{key:'alpha-desc',label:'Z–A'},
+  {key:'urgency-desc',label:'Urgent↓'},{key:'urgency-asc',label:'Urgent↑'},
+];
+
+let state={shop:[],todo:[],notes:[]};
+let member=null,tabIdx=0;
+let shopSort='recency-desc',todoSort='urgency-desc';
+let shopFilter='All',todoFilter='All';
+let shopUrg=0,todoUrg=0;
+let lastTs=0,isSaving=false,pollTimer=null;
+
+function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function timeAgo(ts){
+  const d=Date.now()-ts;
+  if(d<60000)return'just now';
+  if(d<3600000)return Math.floor(d/60000)+'m ago';
+  if(d<86400000)return Math.floor(d/3600000)+'h ago';
+  return Math.floor(d/86400000)+'d ago';
+}
+function getMember(n){return MEMBERS.find(m=>m.name===n)||MEMBERS[0]}
+function toArr(v){if(!v)return[];if(Array.isArray(v))return v;return Object.values(v)}
+function sortList(arr,key){
+  const a=[...arr];
+  if(key==='recency-desc')return a.sort((x,y)=>y.ts-x.ts);
+  if(key==='recency-asc')return a.sort((x,y)=>x.ts-y.ts);
+  if(key==='alpha-asc')return a.sort((x,y)=>x.text.localeCompare(y.text));
+  if(key==='alpha-desc')return a.sort((x,y)=>y.text.localeCompare(x.text));
+  if(key==='urgency-desc')return a.sort((x,y)=>(y.urgency||0)-(x.urgency||0));
+  if(key==='urgency-asc')return a.sort((x,y)=>(x.urgency||0)-(y.urgency||0));
+  return a;
+}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+async function fbRead(){
+  const r=await fetch(FB);
+  if(!r.ok)throw new Error(r.status);
+  const d=await r.json();
+  return{shop:toArr(d&&d.shop),todo:toArr(d&&d.todo),notes:toArr(d&&d.notes),updatedAt:(d&&d.updatedAt)||0};
+}
+async function fbWrite(data){
+  const p={...data,updatedAt:Date.now()};
+  const r=await fetch(FB,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+  if(!r.ok)throw new Error(r.status);
+  return p.updatedAt;
+}
+
+function setStatus(s){
+  const dot=document.getElementById('status-dot');
+  const txt=document.getElementById('status-txt');
+  if(!dot)return;
+  const cols={live:'#00d4c8',saving:'#f59e0b',error:'#f43f5e'};
+  const labels={live:'Live',saving:'Saving',error:'Error'};
+  const col=cols[s]||cols.live;
+  dot.style.background=col;
+  dot.style.boxShadow=`0 0 6px ${col}99`;
+  txt.textContent=labels[s]||'Live';
+}
+
+async function save(){
+  if(isSaving)return;
+  isSaving=true;setStatus('saving');
+  try{lastTs=await fbWrite(state);setStatus('live')}
+  catch(e){console.error(e);setStatus('error')}
+  isSaving=false;
+}
+
+function startPoll(){
+  if(pollTimer)clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{
+    if(isSaving)return;
+    try{
+      const d=await fbRead();
+      if(d.updatedAt>lastTs){lastTs=d.updatedAt;state={shop:d.shop,todo:d.todo,notes:d.notes};renderContent();renderTabs()}
+    }catch(e){}
+  },5000);
+}
+
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active')}
+function showLogin(){member=null;renderLogin();showScreen('login')}
+
+function renderLogin(){
+  const grid=document.getElementById('member-grid');
+  grid.innerHTML=MEMBERS.map(m=>`
+    <button class="member-btn" onclick="selectMember('${esc(m.name)}')"
+      id="mb-${m.initials}">
+      <div class="avatar" style="width:48px;height:48px;background:${m.color}18;border:1.5px solid ${m.color}45;font-size:19px;color:${m.color}">${m.initials}</div>
+      <span class="member-name">${esc(m.name)}</span>
+    </button>
+  `).join('');
+  MEMBERS.forEach(m=>{
+    const btn=document.getElementById('mb-'+m.initials);
+    if(!btn)return;
+    const enter=()=>{btn.style.borderColor=m.color;btn.style.background=m.color+'12';btn.style.boxShadow=`0 8px 24px ${m.color}22`};
+    const leave=()=>{btn.style.borderColor='';btn.style.background='';btn.style.boxShadow=''};
+    btn.addEventListener('mouseenter',enter);
+    btn.addEventListener('mouseleave',leave);
+    btn.addEventListener('touchstart',enter,{passive:true});
+    btn.addEventListener('touchend',()=>setTimeout(leave,300));
+  });
+}
+
+function selectMember(name){
+  member=name;
+  const m=getMember(name);
+  const ha=document.getElementById('header-avatar');
+  const hn=document.getElementById('header-name');
+  ha.style.cssText=`width:22px;height:22px;border-radius:7px;background:${m.color}20;border:1.5px solid ${m.color}50;font-size:9px;color:${m.color};font-weight:700;letter-spacing:-.5px`;
+  ha.textContent=m.initials;
+  hn.textContent=name;
+  renderTabs();renderContent();showScreen('app');
+}
+
+function renderTabs(){
+  const acc=TABS_CFG[tabIdx].accent;
+  document.querySelector('header').style.borderBottomColor=acc+'33';
+  const wrap=document.getElementById('tabs');
+  const sc=state.shop.filter(x=>!x.done).length;
+  const tc=state.todo.filter(x=>!x.done).length;
+  const sort=tabIdx===0?shopSort:todoSort;
+  let html=TABS_CFG.map((t,i)=>{
+    const active=tabIdx===i;
+    const cnt=i===0?sc:i===1?tc:0;
+    return`<button class="tab-btn" onclick="setTab(${i})"
+      style="color:${active?t.accent:'#3d5068'};border-bottom-color:${active?t.accent:'transparent'};${active?`background:${t.accent}0a`:''}">
+      ${esc(t.label)}
+      ${cnt>0?`<span class="tab-cnt" style="background:${active?t.accent+'22':'#161f30'};color:${active?t.accent:'#3d5068'};border:1px solid ${active?t.accent+'40':'#1e2d47'}">${cnt}</span>`:''}
+    </button>`;
+  }).join('');
+  if(tabIdx<2){
+    html+=`<div class="sort-wrap"><select class="sort-sel" style="color:${acc};border-color:${acc}40" onchange="setSort(this.value)">
+      ${SORTS.map(o=>`<option value="${o.key}"${sort===o.key?' selected':''}>${o.label}</option>`).join('')}
+    </select></div>`;
+  }
+  wrap.innerHTML=html;
+}
+
+function setTab(i){tabIdx=i;renderTabs();renderContent()}
+function setSort(v){if(tabIdx===0)shopSort=v;else todoSort=v;renderContent()}
+
+function renderContent(){
+  const content=document.getElementById('content');
+  if(tabIdx===2){content.innerHTML=renderNotes();bindNoteEvents();return}
+
+  const isShopping=tabIdx===0;
+  const list=isShopping?state.shop:state.todo;
+  const sort=isShopping?shopSort:todoSort;
+  const filter=isShopping?shopFilter:todoFilter;
+  const urg=isShopping?shopUrg:todoUrg;
+  const acc=TABS_CFG[tabIdx].accent;
+
+  const filtered=filter==='All'?list:list.filter(i=>i.addedBy===filter);
+  const pending=sortList(filtered.filter(i=>!i.done),sort);
+  const done=sortList(filtered.filter(i=>i.done),sort);
+
+  const pills=['All',...MEMBERS.map(m=>m.name)].map(name=>{
+    const m=name==='All'?null:getMember(name);
+    const active=filter===name;
+    const col=m?m.color:acc;
+    return`<button class="filter-btn" onclick="setFilter('${name}')"
+      style="border-color:${active?col:'#1e2d47'};background:${active?col+'18':'transparent'};color:${active?col:'#3d5068'}">
+      ${m?`<div class="avatar" style="width:14px;height:14px;font-size:7px;color:${m.color};background:${m.color}18;border:1px solid ${m.color}45">${m.initials}</div>`:''}
+      ${esc(name)}
+    </button>`;
+  }).join('');
+
+  const urgBtns=URGENCY.map((u,i)=>`
+    <button class="urg-btn" onclick="setUrg(${i})"
+      style="border-color:${urg===i?u.color:'#1e2d47'};background:${urg===i?u.color+'18':'transparent'};color:${urg===i?u.color:'#3d5068'}">
+      <span class="urg-dot" style="background:${urg===i?u.ring:'#253858'}"></span>${u.label}
+    </button>`).join('');
+
+  const emptyIcon=isShopping
+    ?`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#253858" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>`
+    :`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#253858" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`;
+
+  const pendingHTML=pending.length===0
+    ?`<div class="empty"><div class="empty-icon">${emptyIcon}</div><div class="empty-text">${list.length===0?(isShopping?'Nothing on the list':'No tasks yet'):'All done!'}</div>${list.length===0?`<div class="empty-sub">Add something above</div>`:''}</div>`
+    :pending.map(item=>renderItem(item,acc,false)).join('');
+
+  const doneHTML=done.length===0?'':
+    `<div class="done-section"><div class="done-sep"></div>
+    <div class="done-header"><span class="done-title">Completed · ${done.length}</span>
+    <button class="clear-btn" onclick="clearDone()">Clear all</button></div>
+    ${done.map(item=>renderItem(item,acc,true)).join('')}</div>`;
+
+  content.innerHTML=`
+    <div class="accent-strip" style="background:linear-gradient(90deg,${acc}88,${acc}00)"></div>
+    <div class="input-card">
+      <div class="input-row">
+        <input class="main-input" id="main-input" placeholder="${isShopping?'Add item…':'Add task…'}" style="caret-color:${acc}" onkeydown="if(event.key==='Enter')addItem()">
+        <button class="add-btn" onclick="addItem()" style="background:${acc};box-shadow:0 4px 16px ${acc}44">${isShopping?'Add':'Add'}</button>
+      </div>
+      <div class="urg-row"><span class="urg-label">Urgency</span>${urgBtns}</div>
+    </div>
+    <div class="filter-row">${pills}</div>
+    <div class="count-line">${pending.length} remaining</div>
+    <div class="list-wrap">${pendingHTML}</div>
+    ${doneHTML}
+    <div class="footer"><div class="footer-dot" style="background:#00d4c8;box-shadow:0 0 6px #00d4c866"></div><span class="footer-txt">Synced with Firebase</span></div>
+  `;
+  document.getElementById('main-input')?.focus();
+}
+
+function renderItem(item,acc,isDone){
+  const m=getMember(item.addedBy);
+  const u=item.urgency!=null?URGENCY[item.urgency]:null;
+  const urgBadge=u&&u.label!=='Low'
+    ?`<span class="meta-badge" style="color:${u.color};background:${u.color}18"><span class="urg-dot" style="background:${u.ring}"></span>${u.label}</span>`:'';
+  if(isDone){
+    return`<div class="item done" style="border-left-color:${m.color}44;--glow:${m.color}06">
+      <button class="item-check" onclick="toggleItem('${item.id}')" style="border-color:${m.color}55;background:${m.color}22;color:${m.color};font-size:11px;font-weight:700">✓</button>
+      <div style="flex:1;min-width:0">
+        <div class="item-text done-text">${esc(item.text)}</div>
+        <div class="item-meta"><span style="font-size:10px;color:var(--muted);font-weight:500">by ${esc(item.doneBy||'someone')}</span></div>
+      </div>
+      <button class="del-btn" onclick="delItem('${item.id}')">×</button>
+    </div>`;
+  }
+  return`<div class="item" style="border-left-color:${m.color};--glow:${m.color}10">
+    <button class="item-check" onclick="toggleItem('${item.id}')" style="border-color:${m.color}45"></button>
+    <div style="flex:1;min-width:0">
+      <div class="item-text">${esc(item.text)}</div>
+      <div class="item-meta">
+        <span class="meta-badge" style="color:${m.color};background:${m.color}18">${esc(item.addedBy)}</span>
+        ${urgBadge}
+        <span class="meta-time">${timeAgo(item.ts)}</span>
+      </div>
+    </div>
+    <button class="del-btn" onclick="delItem('${item.id}')">×</button>
+  </div>`;
+}
+
+function renderNotes(){
+  const acc=TABS_CFG[2].accent;
+  const me=getMember(member);
+  const notesHTML=state.notes.length===0
+    ?`<div class="empty"><div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#253858" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div class="empty-text">No notes yet</div><div class="empty-sub">Leave a message for the family</div></div>`
+    :state.notes.map(note=>{
+      const auth=getMember(note.author);const isMe=note.author===member;
+      return`<div class="note-wrap ${isMe?'mine':'theirs'}">
+        <div class="note-header" style="flex-direction:${isMe?'row-reverse':'row'}">
+          <div class="avatar" style="width:24px;height:24px;font-size:9px;color:${auth.color};background:${auth.color}18;border:1.5px solid ${auth.color}45">${auth.initials}</div>
+          <span class="note-author" style="color:${auth.color}">${esc(note.author)}</span>
+          <span class="note-time">${timeAgo(note.ts)}</span>
+        </div>
+        <div class="note-bubble" style="background:${isMe?auth.color+'15':'#111827'};border-color:${isMe?auth.color+'30':'#1e2d47'};border-radius:${isMe?'16px 4px 16px 16px':'4px 16px 16px 16px'}">
+          <div class="note-text">${esc(note.text)}</div>
+        </div>
+        ${isMe?`<button class="note-delete" onclick="delNote('${note.id}')">Delete</button>`:''}
+      </div>`;
+    }).join('');
+  return`
+    <div class="notes-compose" style="border-top-color:${acc}55;border-top-width:2px">
+      <textarea class="notes-textarea" id="note-input" placeholder="Write a note to the family…" rows="3" style="caret-color:${acc}"></textarea>
+      <div class="notes-footer">
+        <div class="notes-as">
+          <div class="avatar" style="width:20px;height:20px;font-size:8px;color:${me.color};background:${me.color}18;border:1.5px solid ${me.color}45">${me.initials}</div>
+          as <b style="color:${me.color};font-weight:700">${esc(member)}</b>
+        </div>
+        <button class="post-btn" id="post-btn" style="background:${acc};box-shadow:0 4px 16px ${acc}44">Post</button>
+      </div>
+    </div>
+    <div class="notes-feed">${notesHTML}</div>
+    <div class="footer"><div class="footer-dot" style="background:#00d4c8;box-shadow:0 0 6px #00d4c866"></div><span class="footer-txt">Synced with Firebase</span></div>
+  `;
+}
+function bindNoteEvents(){
+  const btn=document.getElementById('post-btn');
+  const inp=document.getElementById('note-input');
+  if(btn)btn.onclick=postNote;
+  if(inp)inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();postNote()}});
+}
+
+function addItem(){
+  const inp=document.getElementById('main-input');
+  const text=inp?.value.trim();if(!text)return;
+  const isShopping=tabIdx===0;const urg=isShopping?shopUrg:todoUrg;
+  const item={id:genId(),text,urgency:urg,addedBy:member,done:false,ts:Date.now()};
+  if(isShopping)state.shop=[item,...state.shop];else state.todo=[item,...state.todo];
+  if(isShopping)shopUrg=0;else todoUrg=0;
+  inp.value='';renderTabs();renderContent();save();
+}
+function toggleItem(id){
+  const k=tabIdx===0?'shop':'todo';
+  state[k]=state[k].map(i=>i.id===id?{...i,done:!i.done,doneBy:!i.done?member:undefined}:i);
+  renderTabs();renderContent();save();
+}
+function delItem(id){
+  const k=tabIdx===0?'shop':'todo';
+  state[k]=state[k].filter(i=>i.id!==id);
+  renderTabs();renderContent();save();
+}
+function clearDone(){
+  const k=tabIdx===0?'shop':'todo';
+  state[k]=state[k].filter(i=>!i.done);
+  renderTabs();renderContent();save();
+}
+function postNote(){
+  const inp=document.getElementById('note-input');
+  const text=inp?.value.trim();if(!text)return;
+  state.notes=[{id:genId(),text,author:member,ts:Date.now()},...state.notes];
+  inp.value='';renderContent();save();
+}
+function delNote(id){
+  state.notes=state.notes.filter(n=>n.id!==id);
+  renderContent();save();
+}
+function setFilter(name){if(tabIdx===0)shopFilter=name;else todoFilter=name;renderContent()}
+function setUrg(i){if(tabIdx===0)shopUrg=i;else todoUrg=i;renderContent()}
+
+async function init(){
+  showScreen('loading');
+  try{
+    const d=await fbRead();
+    state={shop:d.shop,todo:d.todo,notes:d.notes};
+    lastTs=d.updatedAt;
+    setStatus('live');
+    renderLogin();
+    showScreen('login');
+    startPoll();
+  }catch(e){
+    console.error(e);
+    setStatus('error');
+    renderLogin();
+    showScreen('login');
+  }
+}
+init();
+</script>
+</body>
+</html>
