@@ -129,7 +129,7 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 .swipe-wrap:nth-child(3) .item{animation:itemIn .2s .08s var(--ease) both}
 .swipe-wrap:nth-child(4) .item{animation:itemIn .2s .11s var(--ease) both}
 .swipe-wrap:nth-child(n+5) .item{animation:itemIn .2s .14s var(--ease) both}
-.swipe-bg{position:absolute;inset:0;background:#ef4444;display:flex;align-items:center;justify-content:flex-end;padding-right:18px;border-radius:14px}
+.swipe-bg{position:absolute;inset:0;background:#ef4444;display:flex;align-items:center;justify-content:flex-end;padding-right:18px;border-radius:14px;opacity:0}
 .swipe-bg-txt{color:white;font-size:14px;font-weight:700}
 .item{display:flex;align-items:center;gap:11px;background:var(--surf);border-radius:14px;padding:12px 13px;border:1px solid var(--brd);border-left-width:3px;position:relative;z-index:1;will-change:transform;touch-action:pan-y;transition:background .3s,border-color .3s}
 .item.done{opacity:.32}
@@ -245,7 +245,7 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
         <div><div class="h-lbl">Cheema Family</div><div class="h-title">Family Hub</div></div>
       </div>
       <div class="h-right">
-        <button class="hbtn" id="themebtn" onclick="toggleTheme()" title="Light/dark"></button>
+        <button class="hbtn" id="themebtn" onclick="toggleTheme()" title="Toggle theme"><svg id="theme-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
         <div class="status-pill"><div class="sdot" id="sdot"></div><div class="stxt" id="stxt">Live</div></div>
         <button class="m-chip" onclick="doLogout()"><div class="avatar" id="hav"></div><span class="chip-name" id="hname"></span></button>
       </div>
@@ -259,7 +259,7 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
 const VAPID_PUB='BHeqNiEDdtZG2JXW-xhJxz8ARfkIPkyfgfQjt5rjf5a4I0nQJZYRqkPGXs-MnDkT6nc3W2lPH9IFlhGMzR4OJ-0';
-const VER='v7.0';
+const VER='v6.6';
 
 const MEMBERS=[
   {name:'Mum',initials:'M',color:'#f472b6'},
@@ -307,8 +307,13 @@ function toggleTheme(){
   syncThemeBtn();
 }
 function syncThemeBtn(){
-  const b=document.getElementById('themebtn');
-  if(b)b.textContent=document.body.classList.contains('light')?'🌙':'☀️';
+  const icon=document.getElementById('theme-icon');
+  if(!icon)return;
+  const isLight=document.body.classList.contains('light');
+  // Moon = dark mode, Sun = light mode
+  icon.innerHTML=isLight
+    ?'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
+    :'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
 }
 
 // ── UTILS ──
@@ -684,15 +689,30 @@ function rItem(it,isDone){
 
 // ── SWIPE TO DELETE ──
 function bindSwipe(wrap){
-  const item=wrap.querySelector('.item');if(!item)return;
+  const item=wrap.querySelector('.item'),bg=wrap.querySelector('.swipe-bg');
+  if(!item)return;
   let sx=0,cx=0,going=false;
   item.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;cx=0;going=true;item.style.transition='none';},{passive:true});
-  item.addEventListener('touchmove',e=>{if(!going)return;const dx=e.touches[0].clientX-sx;if(dx<0){cx=Math.max(dx,-165);item.style.transform=`translateX(${cx}px)`;}},{passive:true});
+  item.addEventListener('touchmove',e=>{
+    if(!going)return;
+    const dx=e.touches[0].clientX-sx;
+    if(dx<0){
+      cx=Math.max(dx,-165);
+      item.style.transform='translateX('+cx+'px)';
+      if(bg)bg.style.opacity=Math.min(1,(-cx-10)/55)+'';
+    }
+  },{passive:true});
   item.addEventListener('touchend',()=>{
     if(!going)return;going=false;
     item.style.transition='transform .2s ease,opacity .2s ease';
-    if(cx<-105){item.style.transform='translateX(-110%)';item.style.opacity='0';setTimeout(()=>delItem(wrap.dataset.id),200);}
-    else item.style.transform='none';cx=0;
+    if(cx<-105){
+      item.style.transform='translateX(-110%)';item.style.opacity='0';
+      setTimeout(()=>delItem(wrap.dataset.id),200);
+    } else {
+      item.style.transform='none';
+      if(bg){bg.style.transition='opacity .18s';bg.style.opacity='0';}
+    }
+    cx=0;
   });
 }
 
