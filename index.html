@@ -218,6 +218,51 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 .fdot{width:5px;height:5px;border-radius:50%;background:#22c55e;animation:pulseGreen 4s 1s infinite}
 .ftxt{font-size:10px;color:var(--muted);font-weight:500}
 .fver{font-size:9px;color:var(--muted);opacity:.5;margin-left:3px;font-weight:600}
+
+/* ── NOTICE BOARD ── */
+.notice-board{margin:12px 13px 0;animation:fadeUp .2s var(--ease) both}
+.notice-board-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.notice-board-lbl{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+.notice-pin-icon{font-size:11px}
+.notice-add-btn{font-size:11px;font-weight:600;color:var(--sub);background:var(--surf2);border:1px solid var(--brd);padding:3px 9px;border-radius:7px;cursor:pointer;transition:opacity .15s}
+.notice-item{background:var(--surf2);border:1px solid var(--brd);border-left:3px solid #f59e0b;border-radius:12px;padding:10px 12px;margin-bottom:6px;animation:itemIn .2s var(--ease) both;position:relative}
+.notice-text{font-size:13px;font-weight:500;color:var(--text);line-height:1.45;word-break:break-word}
+.notice-meta{display:flex;align-items:center;justify-content:space-between;margin-top:5px}
+.notice-author{font-size:10px;font-weight:700}
+.notice-unpin{font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;padding:1px 4px;transition:color .15s}
+.notice-unpin:active{color:#ef4444}
+.notice-compose{background:var(--surf);border:1.5px solid #f59e0b55;border-radius:12px;overflow:hidden;margin-bottom:6px;animation:fadeUp .2s var(--ease) both}
+.notice-compose textarea{width:100%;padding:10px 12px;border:none;background:transparent;font-size:13px;color:var(--text);resize:none;outline:none;line-height:1.5}
+.notice-compose-ft{display:flex;justify-content:flex-end;gap:7px;padding:5px 10px 8px;border-top:1px solid var(--brd)}
+.notice-compose-ft button{padding:5px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;transition:opacity .15s}
+
+/* ── VOTING / POLLS ── */
+.poll-compose{background:var(--surf2);border:1.5px solid var(--brd);border-radius:12px;padding:11px 13px;margin-bottom:10px;animation:fadeUp .2s var(--ease) both}
+.poll-compose-lbl{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px}
+.poll-q-input{width:100%;padding:8px 10px;border:1px solid var(--brd);border-radius:8px;background:var(--surf3);font-size:13px;color:var(--text);outline:none;margin-bottom:7px}
+.poll-opt-row{display:flex;gap:6px;margin-bottom:5px}
+.poll-opt-input{flex:1;padding:6px 10px;border:1px solid var(--brd);border-radius:8px;background:var(--surf3);font-size:12px;color:var(--text);outline:none}
+.poll-opt-rm{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 4px}
+.poll-actions{display:flex;gap:7px;margin-top:8px}
+.poll-add-opt{flex:1;padding:7px;border-radius:8px;border:1px dashed var(--brd);background:transparent;font-size:11px;font-weight:600;color:var(--sub);cursor:pointer}
+.poll-submit{padding:7px 14px;border-radius:8px;border:none;font-size:12px;font-weight:700;color:white;cursor:pointer}
+.nbubble.poll-bubble{padding:12px 14px}
+.poll-question{font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px}
+.poll-option{margin-bottom:6px;cursor:pointer;border-radius:8px;overflow:hidden;position:relative;border:1.5px solid var(--brd);transition:border-color .15s}
+.poll-option.voted{border-color:currentColor}
+.poll-option-bar{position:absolute;left:0;top:0;bottom:0;transition:width .4s ease;opacity:.18}
+.poll-option-inner{position:relative;display:flex;align-items:center;justify-content:space-between;padding:7px 10px;font-size:12px;font-weight:600}
+.poll-option-pct{font-size:11px;font-weight:700;opacity:.7}
+.poll-voters{font-size:10px;color:var(--muted);margin-top:5px}
+
+/* ── ITEM PHOTOS ── */
+.photo-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 4px;font-size:16px;transition:color .15s;flex-shrink:0}
+.photo-btn:active{color:var(--sub)}
+.item-photo{width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:pointer;border:1px solid var(--brd);transition:transform .15s}
+.item-photo:active{transform:scale(.95)}
+.photo-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeUp .15s ease both}
+.photo-modal img{max-width:100%;max-height:85vh;border-radius:14px;object-fit:contain}
+.photo-modal-close{position:absolute;top:20px;right:20px;background:rgba(255,255,255,.15);border:none;color:white;font-size:22px;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center}
 </style>
 </head>
 <body>
@@ -259,7 +304,7 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 <script>
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v6.7.5';
+const VER='v6.8.0';
 
 const MEMBERS=[
   {name:'Mum',initials:'M',color:'#f472b6'},
@@ -284,7 +329,7 @@ const SORTS=[
 ];
 const EMOJIS=['👍','❤️','😂','😮','😢'];
 
-let state={shop:[],todo:[],notes:[]};
+let state={shop:[],todo:[],notes:[],notices:[],polls:[]};
 let member=null,tabIdx=0,prevTab=0;
 let shopSort='recency-desc',todoSort='urgency-desc';
 let shopFilter='All',todoFilter='All';
@@ -827,7 +872,7 @@ function renderContent(){
     ${dH}
     <div class="footer"><div class="fdot"></div><span class="ftxt">Synced · Firebase</span><span class="fver">${VER}</span></div>
   `;
-  document.getElementById('mi')?.focus();
+  if(shouldFocus){document.getElementById('mi')?.focus();shouldFocus=false;}
   document.querySelectorAll('.swipe-outer').forEach(bindSwipe);
   initTabSwipe();
 }
@@ -837,6 +882,9 @@ function rItem(it,isDone){
   const ub=`<span class="iurg" onclick="cycleUrg(event,'${it.id}')" style="color:${u.color}"><span class="udot" style="background:${u.ring};margin-right:2px"></span>${u.label}</span>`;
   const chk=`border-color:${m.color}55${isDone?`;background:${m.color}22;color:${m.color}`:''}`;
   const bord=isDone?`${u.color}55`:u.color;
+  const photoEl=it.photo
+    ?`<img class="item-photo" src="${it.photo}" onclick="viewPhoto('${it.photo}')">`
+    :(isDone?'':`<button class="photo-btn" onclick="addPhoto('${it.id}')" title="Add photo">📷</button>`);
   return`<div class="swipe-outer">
     <div class="swipe-wrap" data-id="${it.id}">
       <span class="swipe-delete-hint">✕ Delete</span>
@@ -850,6 +898,7 @@ function rItem(it,isDone){
             <span class="itime">${isDone?`by ${esc(it.doneBy||'?')}`:timeAgo(it.ts)}</span>
           </div>
         </div>
+        ${photoEl}
         <button class="del-btn" onclick="delItem('${it.id}')">×</button>
       </div>
     </div>
@@ -914,7 +963,23 @@ function buildMsgs(){
     ?`<div class="empty"><div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brd)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div class="empty-text">No messages yet</div><div class="empty-sub">Send one above</div></div>`
     :state.notes.map(n=>{
       const auth=getMem(n.author),isMe=n.author===member,rx=n.reactions||{};
+      // Polls render differently
+      if(n.type==='poll'){
+        const isMe2=n.author===member;
+        return`<div class="nwrap ${isMe2?'mine':'theirs'}">
+          <div class="nhdr" style="flex-direction:${isMe2?'row-reverse':'row'}">
+            <div class="avatar" style="width:28px;height:28px;font-size:11px;color:${auth.color};background:${auth.color}1a;border:2px solid ${auth.color}55">${auth.initials}</div>
+            <span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span>
+            <span class="ntime">${timeAgo(n.ts)}</span>
+          </div>
+          <div class="nbubble poll-bubble ${isMe2?'mine':'theirs'}" style="background:${isMe2?auth.color+'18':'var(--surf2)'};border-color:${isMe2?auth.color+'44':'var(--brd)'}${!isMe2?`;border-left-color:${auth.color}88`:''}">
+            ${renderPoll(n,isMe2)}
+          </div>
+          ${isMe2?`<button class="ndel" onclick="delNote('${n.id}')">Delete poll</button>`:''}
+        </div>`;
+      }
       const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');
+      // Normal message
       return`<div class="nwrap ${isMe?'mine':'theirs'}">
         <div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}">
           <div class="avatar" style="width:28px;height:28px;font-size:11px;color:${auth.color};background:${auth.color}1a;border:2px solid ${auth.color}55">${auth.initials}</div>
@@ -930,6 +995,7 @@ function buildMsgs(){
     }).join('');
   return`
     <div class="accent-strip" style="background:${acc}"></div>
+    ${noticeBoard()}
     ${notifBar()}
     <div class="msg-compose" style="border-top-color:${acc}">
       <textarea class="msg-ta" id="ni" placeholder="Message the family…" rows="3" style="caret-color:${acc}"></textarea>
@@ -938,9 +1004,10 @@ function buildMsgs(){
           <div class="avatar" style="width:21px;height:21px;font-size:8.5px;color:${me.color};background:${me.color}1a;border:1.5px solid ${me.color}55;flex-shrink:0">${me.initials}</div>
           as&nbsp;<b style="color:${me.color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(member)}</b>
         </div>
-        <button class="post-btn" id="pb" style="background:${acc}">Send</button>
+        <div style="display:flex;gap:7px;flex-shrink:0"><button onclick="showPollCompose=!showPollCompose;renderContent()" style="padding:7px 10px;border-radius:10px;border:1px solid var(--brd);background:var(--surf2);font-size:12px;cursor:pointer" title="Create poll">📊</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div>
       </div>
     </div>
+    ${pollCompose()}
     <div class="msg-feed">${msgsH}</div>
     <div class="footer"><div class="fdot"></div><span class="ftxt">Synced · Firebase</span><span class="fver">${VER}</span></div>
   `;
@@ -985,7 +1052,7 @@ function addItem(){
   const it={id:genId(),text,urgency:urg,addedBy:member,done:false,ts:Date.now()};
   if(isS)state.shop=[it,...state.shop];else state.todo=[it,...state.todo];
   if(isS)shopUrg=0;else todoUrg=0;
-  inp.value='';renderTabs();renderContent();save();
+  inp.value='';shouldFocus=true;renderTabs();renderContent();save();
   queueNotif(isS?'shop':'todo', member, text);sendPushNotif(`${member} → ${isS?'Shopping':'To-Do'}`,text);
 }
 function setUrg(i){
@@ -1022,6 +1089,150 @@ function delNote(id){state.notes=state.notes.filter(n=>n.id!==id);renderContent(
 function setFilter(n){if(tabIdx===0)shopFilter=n;else todoFilter=n;renderContent();}
 
 // ── INIT ──
+// ── NOTICE BOARD ──
+let showNoticeCompose=false;
+function noticeBoard(){
+  const notices=state.notices||[];
+  if(!notices.length&&!showNoticeCompose)return'';
+  const items=notices.map(n=>{
+    const m=getMem(n.author);
+    const canUnpin=n.author===member;
+    return`<div class="notice-item">
+      <div class="notice-text">${esc(n.text)}</div>
+      <div class="notice-meta">
+        <span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>
+        ${canUnpin?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  const compose=showNoticeCompose?`
+    <div class="notice-compose">
+      <textarea id="notice-ta" placeholder="Write a notice for the family…" rows="2" style="caret-color:#f59e0b"></textarea>
+      <div class="notice-compose-ft">
+        <button onclick="showNoticeCompose=false;renderContent()" style="background:var(--surf2);border:1px solid var(--brd);color:var(--sub)">Cancel</button>
+        <button onclick="postNotice()" style="background:#f59e0b;color:white;border:none">Pin it</button>
+      </div>
+    </div>`:'';
+  return`<div class="notice-board">
+    <div class="notice-board-hdr">
+      <span class="notice-board-lbl"><span class="notice-pin-icon">📌</span> Notice Board</span>
+      ${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}
+    </div>
+    ${compose}${items}
+  </div>`;
+}
+function postNotice(){
+  const ta=document.getElementById('notice-ta'),text=ta?.value.trim();
+  if(!text)return;
+  const n={id:genId(),text,author:member,ts:Date.now()};
+  state.notices=[n,...(state.notices||[])];
+  showNoticeCompose=false;renderContent();save();
+  sendPushNotif('📌 '+member+' pinned a notice',text);
+}
+function unpinNotice(id){
+  state.notices=(state.notices||[]).filter(n=>n.id!==id);
+  renderContent();save();
+}
+
+// ── VOTING / POLLS ──
+let showPollCompose=false;
+let pollOpts=['',''];
+function pollCompose(){
+  if(!showPollCompose)return'';
+  const opts=pollOpts.map((o,i)=>`
+    <div class="poll-opt-row">
+      <input class="poll-opt-input" placeholder="Option ${i+1}" value="${esc(o)}" oninput="pollOpts[${i}]=this.value">
+      ${pollOpts.length>2?`<button class="poll-opt-rm" onclick="pollOpts.splice(${i},1);renderContent()">×</button>`:''}
+    </div>`).join('');
+  return`<div class="poll-compose">
+    <div class="poll-compose-lbl">📊 New Poll</div>
+    <input class="poll-q-input" id="poll-q" placeholder="Ask a question…">
+    ${opts}
+    <div class="poll-actions">
+      ${pollOpts.length<4?`<button class="poll-add-opt" onclick="pollOpts.push('');renderContent()">+ Add option</button>`:''}
+      <button class="poll-submit" style="background:${TABS[2].accent}" onclick="postPoll()">Post poll</button>
+      <button onclick="showPollCompose=false;pollOpts=['',''];renderContent()" style="background:var(--surf2);border:1px solid var(--brd);color:var(--sub);padding:7px 10px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">Cancel</button>
+    </div>
+  </div>`;
+}
+function postPoll(){
+  const q=document.getElementById('poll-q')?.value.trim();
+  const opts=pollOpts.filter(o=>o.trim());
+  if(!q||opts.length<2)return;
+  const poll={id:genId(),q,opts:opts.map(o=>({text:o,votes:{}})),author:member,ts:Date.now(),type:'poll'};
+  state.notes=[poll,...state.notes];
+  showPollCompose=false;pollOpts=['',''];renderContent();save();
+  sendPushNotif('📊 '+member+' posted a poll',q);
+}
+function votePoll(noteId,optIdx){
+  state.notes=state.notes.map(n=>{
+    if(n.id!==noteId||n.type!=='poll')return n;
+    const opts=n.opts.map((o,i)=>{
+      const votes={...(o.votes||{})};
+      // Remove vote from all options first
+      delete votes[member];
+      return{...o,votes};
+    }).map((o,i)=>{
+      if(i===optIdx){
+        const votes={...(o.votes||{})};
+        votes[member]=true;
+        return{...o,votes};
+      }
+      return o;
+    });
+    return{...n,opts};
+  });
+  renderContent();save();
+}
+function renderPoll(n,isMe){
+  const auth=getMem(n.author);
+  const totalVotes=n.opts.reduce((s,o)=>s+Object.keys(o.votes||{}).length,0);
+  const myVote=n.opts.findIndex(o=>(o.votes||{})[member]);
+  const opts=n.opts.map((o,i)=>{
+    const count=Object.keys(o.votes||{}).length;
+    const pct=totalVotes?Math.round(count/totalVotes*100):0;
+    const voted=myVote===i;
+    return`<div class="poll-option${voted?' voted':''}" style="${voted?`color:${auth.color}`:'color:var(--sub)'}" onclick="votePoll('${n.id}',${i})">
+      <div class="poll-option-bar" style="width:${pct}%;background:${auth.color}"></div>
+      <div class="poll-option-inner">
+        <span>${esc(o.text)}${voted?' ✓':''}</span>
+        <span class="poll-option-pct">${totalVotes?pct+'%':''}</span>
+      </div>
+    </div>`;
+  }).join('');
+  return`<div class="poll-question">${esc(n.q)}</div>${opts}<div class="poll-voters">${totalVotes} vote${totalVotes!==1?'s':''}</div>`;
+}
+
+// ── ITEM PHOTOS ──
+function addPhoto(itemId){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';inp.capture='environment';
+  inp.onchange=async e=>{
+    const file=e.target.files[0];if(!file)return;
+    const canvas=document.createElement('canvas');
+    const img=new Image();
+    img.onload=()=>{
+      const MAX=320;
+      const ratio=Math.min(MAX/img.width,MAX/img.height,1);
+      canvas.width=img.width*ratio;canvas.height=img.height*ratio;
+      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+      const b64=canvas.toDataURL('image/jpeg',0.75);
+      const k=tabIdx===0?'shop':'todo';
+      state[k]=state[k].map(i=>i.id===itemId?{...i,photo:b64}:i);
+      renderContent();save();
+    };
+    img.src=URL.createObjectURL(file);
+  };
+  inp.click();
+}
+function viewPhoto(b64){
+  const m=document.createElement('div');m.className='photo-modal';
+  m.innerHTML=`<img src="${b64}"><button class="photo-modal-close" onclick="this.parentElement.remove()">✕</button>`;
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  document.body.appendChild(m);
+}
+
+
 // ── MISSING STUBS (cleanup of old code) ──
 function isStandalone(){
   return window.matchMedia('(display-mode: standalone)').matches ||
@@ -1088,7 +1299,7 @@ async function init(){
   try{await initSW();}catch(e){}
   try{
     const d=await fbRead();
-    state={shop:d.shop,todo:d.todo,notes:d.notes};lastTs=d.updatedAt;
+    state={shop:d.shop,todo:d.todo,notes:d.notes,notices:toArr(d&&d.notices),polls:toArr(d&&d.polls)};lastTs=d.updatedAt;
     setStatus('live');
   }catch(e){
     setStatus('error');
