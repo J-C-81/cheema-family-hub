@@ -2,17 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <!-- PWA -->
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Family Hub">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" id="tmeta" content="#0e1a2e">
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon.png">
 <title>Cheema Family Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -260,7 +259,7 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 <script>
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v6.7.2';
+const VER='v6.7.3';
 
 const MEMBERS=[
   {name:'Mum',initials:'M',color:'#f472b6'},
@@ -830,6 +829,7 @@ function renderContent(){
   `;
   document.getElementById('mi')?.focus();
   document.querySelectorAll('.swipe-wrap').forEach(bindSwipe);
+  initTabSwipe();
 }
 
 function rItem(it,isDone){
@@ -854,28 +854,39 @@ function rItem(it,isDone){
 
 // ── SWIPE TO DELETE ──
 function bindSwipe(wrap){
-  const item=wrap.querySelector('.item'),bg=wrap.querySelector('.swipe-bg');
+  const item=wrap.querySelector('.item');
   if(!item)return;
   let sx=0,cx=0,going=false;
-  item.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;cx=0;going=true;item.style.transition='none';},{passive:true});
+  
+  item.addEventListener('touchstart',e=>{
+    sx=e.touches[0].clientX;cx=0;going=true;
+    item.style.transition='none';
+  },{passive:true});
+  
   item.addEventListener('touchmove',e=>{
     if(!going)return;
     const dx=e.touches[0].clientX-sx;
     if(dx<0){
       cx=Math.max(dx,-165);
       item.style.transform='translateX('+cx+'px)';
-      if(bg)bg.style.opacity=Math.min(1,(-cx-10)/55)+'';
+      // Show red background through the overflow:hidden by making wrap bg visible
+      wrap.style.background=cx<-15?'#ef4444':'transparent';
     }
   },{passive:true});
+  
   item.addEventListener('touchend',()=>{
     if(!going)return;going=false;
-    item.style.transition='transform .2s ease,opacity .2s ease';
-    if(cx<-105){
-      item.style.transform='translateX(-110%)';item.style.opacity='0';
-      setTimeout(()=>delItem(wrap.dataset.id),200);
+    if(cx<-100){
+      // Delete: slide item out, red stays visible underneath
+      item.style.transition='transform .2s ease,opacity .15s ease';
+      item.style.transform='translateX(-110%)';
+      item.style.opacity='0';
+      setTimeout(()=>{delItem(wrap.dataset.id);},200);
     } else {
-      item.style.transform='none';
-      if(bg){bg.style.transition='opacity .18s';bg.style.opacity='0';}
+      // Snap back
+      item.style.transition='transform .22s cubic-bezier(.4,0,.2,1)';
+      item.style.transform='translateX(0)';
+      setTimeout(()=>{wrap.style.background='';},220);
     }
     cx=0;
   });
@@ -923,6 +934,7 @@ function bindMsgEv(){
   const b=document.getElementById('pb'),i=document.getElementById('ni');
   if(b)b.onclick=postNote;
   if(i)i.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();postNote();}});
+  initTabSwipe();
 }
 
 // ── EMOJI PICKER ──
@@ -1010,6 +1022,38 @@ function triggerInstall(){
 }
 
 
+// ── TAB SWIPE GESTURE ──
+function initTabSwipe(){
+  const content=document.getElementById('content');
+  if(!content)return;
+  let tsx=0,tsy=0,tsActive=false;
+  
+  content.addEventListener('touchstart',e=>{
+    // Only start if not touching an item (to not conflict with swipe-to-delete)
+    if(e.target.closest('.swipe-wrap,.item'))return;
+    tsx=e.touches[0].clientX;
+    tsy=e.touches[0].clientY;
+    tsActive=true;
+  },{passive:true});
+  
+  content.addEventListener('touchmove',e=>{
+    if(!tsActive)return;
+    const dx=e.touches[0].clientX-tsx;
+    const dy=e.touches[0].clientY-tsy;
+    // If more vertical than horizontal, cancel
+    if(Math.abs(dy)>Math.abs(dx)+10){tsActive=false;}
+  },{passive:true});
+  
+  content.addEventListener('touchend',e=>{
+    if(!tsActive)return;tsActive=false;
+    const dx=e.changedTouches[0].clientX-tsx;
+    const dy=e.changedTouches[0].clientY-tsy;
+    if(Math.abs(dx)<50||Math.abs(dy)>Math.abs(dx))return; // not a clear horizontal swipe
+    if(dx<0&&tabIdx<TABS.length-1)setTab(tabIdx+1); // swipe left = next tab
+    else if(dx>0&&tabIdx>0)setTab(tabIdx-1);          // swipe right = prev tab
+  },{passive:true});
+}
+
 async function init(){
   try{initTheme();}catch(e){}
   showScreen('loading');
@@ -1029,7 +1073,7 @@ async function init(){
     const savedMem=saved&&MEMBERS.find(m=>m.name===saved);
     if(savedMem){selectMember(saved);}
     else{showScreen('login');}
-    startPoll();
+    startPoll();setTimeout(initTabSwipe,500);
   }catch(e){showScreen('login');}
   try{loadTgCfg();}catch(e){}
   try{initPush();}catch(e){}
