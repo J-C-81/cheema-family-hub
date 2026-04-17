@@ -260,8 +260,7 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 <script>
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VAPID_PUB='BHeqNiEDdtZG2JXW-xhJxz8ARfkIPkyfgfQjt5rjf5a4I0nQJZYRqkPGXs-MnDkT6nc3W2lPH9IFlhGMzR4OJ-0';
-const VER='v6.7.0';
+const VER='v6.7.1';
 
 const MEMBERS=[
   {name:'Mum',initials:'M',color:'#f472b6'},
@@ -271,7 +270,7 @@ const MEMBERS=[
 ];
 const URGENCY=[
   {label:'Low',   color:'#22c55e',ring:'#4ade80'},
-  {label:'Medium',color:'#f59e0b',ring:'#fbbf24'},
+  {label:'Medium',color:'#eab308',ring:'#fde047'},
   {label:'High',  color:'#ef4444',ring:'#f87171'},
 ];
 const TABS=[
@@ -411,6 +410,79 @@ async function subscribePush(){
     });
     return true;
   }catch(e){console.log('Push subscribe:',e.message);return false;}
+}
+
+// ── WEB PUSH SUBSCRIPTION ──
+const VAPID_PUB='BHeqNiEDdtZG2JXW-xhJxz8ARfkIPkyfgfQjt5rjf5a4I0nQJZYRqkPGXs-MnDkT6nc3W2lPH9IFlhGMzR4OJ-0';
+const FB_SUBS='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions';
+
+function b64ToArr(b64){
+  const pad='='.repeat((4-b64.length%4)%4);
+  const raw=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+
+async function initPush(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window))return;
+  try{
+    const reg=await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    // If already subscribed, just refresh the stored sub
+    const existing=await reg.pushManager.getSubscription();
+    if(existing){await storeSub(existing);return;}
+    // If permission already granted, subscribe silently
+    if(Notification.permission==='granted'){
+      const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToArr(VAPID_PUB)});
+      await storeSub(sub);
+    }
+    // Otherwise wait for user to tap the enable button
+  }catch(e){console.log('Push init:',e.message);}
+}
+
+async function enablePush(){
+  if(!('Notification' in window))return;
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted')return;
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToArr(VAPID_PUB)});
+    await storeSub(sub);
+    renderContent(); // remove banner
+  }catch(e){console.log('Enable push:',e.message);}
+}
+
+async function storeSub(sub){
+  try{
+    const key=btoa(sub.endpoint).replace(/[^a-zA-Z0-9]/g,'').slice(-22);
+    await fetch(`${FB_SUBS}/${key}.json`,{
+      method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(sub.toJSON())
+    });
+  }catch(e){}
+}
+
+function needsPushBanner(){
+  if(!('Notification' in window)||!('PushManager' in window))return false;
+  return Notification.permission==='default';
+}
+
+function pushBannerHTML(){
+  if(!needsPushBanner())return'';
+  return`<div class="nbanner">
+    <span class="nbtxt">Tap to get notifications when the family adds something</span>
+    <button class="nbact" onclick="enablePush()">Enable</button>
+    <button class="nbdis" onclick="this.closest('.nbanner').remove()">✕</button>
+  </div>`;
+}
+
+async function sendPushNotif(title,body){
+  try{
+    fetch('/.netlify/functions/notify',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({payload:{title,body}})
+    });
+  }catch(e){}
 }
 
 // ── TELEGRAM NOTIFICATIONS ──
@@ -616,7 +688,7 @@ function renderLogin(){
 }
 
 function selectMember(name){
-  member=name;const m=getMem(name);
+  member=name;localStorage.setItem('cfh_member',name);const m=getMem(name);
   const ha=document.getElementById('hav'),hn=document.getElementById('hname'),hicon=document.getElementById('hicon');
   ha.style.cssText=`width:22px;height:22px;border-radius:7px;background:${m.color}22;border:1.5px solid ${m.color}55;font-size:9px;color:${m.color};font-weight:700`;
   ha.textContent=m.initials;hn.textContent=name;
@@ -887,7 +959,7 @@ function addItem(){
   if(isS)state.shop=[it,...state.shop];else state.todo=[it,...state.todo];
   if(isS)shopUrg=0;else todoUrg=0;
   inp.value='';renderTabs();renderContent();save();
-  queueNotif(isS?'shop':'todo', member, text);
+  queueNotif(isS?'shop':'todo', member, text);sendPushNotif(`${member} → ${isS?'Shopping':'To-Do'}`,text);
 }
 function setUrg(i){
   const inp=document.getElementById('mi'),saved=inp?inp.value:'';
@@ -917,7 +989,7 @@ function postNote(){
   const inp=document.getElementById('ni'),text=inp?.value.trim();if(!text)return;
   state.notes=[{id:genId(),text,author:member,ts:Date.now(),reactions:{}},...state.notes];
   inp.value='';renderContent();save();
-  queueNotif('msg', member, text);
+  queueNotif('msg', member, text);sendPushNotif(`💬 ${member}`,text);
 }
 function delNote(id){state.notes=state.notes.filter(n=>n.id!==id);renderContent();save();}
 function setFilter(n){if(tabIdx===0)shopFilter=n;else todoFilter=n;renderContent();}
@@ -929,7 +1001,12 @@ async function init(){
   try{
     const d=await fbRead();
     state={shop:d.shop,todo:d.todo,notes:d.notes};lastTs=d.updatedAt;
-    setStatus('live');renderLogin();showScreen('login');startPoll();loadTgCfg();
+    setStatus('live');
+    const saved=localStorage.getItem('cfh_member');
+    const savedMem=saved&&MEMBERS.find(m=>m.name===saved);
+    if(savedMem){renderLogin();selectMember(saved);}
+    else{renderLogin();showScreen('login');}
+    startPoll();loadTgCfg();initPush();
     // If already running as installed PWA with permission, re-subscribe
     if(isStandalone()&&'Notification' in window&&Notification.permission==='granted'){
       subscribePush();
