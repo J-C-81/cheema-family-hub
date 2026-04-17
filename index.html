@@ -124,16 +124,14 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 
 /* ── ITEMS ── */
 .list-wrap{padding:3px 13px 0}
-.swipe-outer{margin-bottom:7px;border-radius:14px;overflow:hidden}
-.swipe-wrap{position:relative;min-height:1px;background:#ef4444;display:flex;align-items:center;justify-content:flex-end;padding-right:16px}
-.swipe-wrap::after{content:'✕';color:rgba(255,255,255,.8);font-size:14px;font-weight:700;position:absolute;right:16px}
-.swipe-wrap:nth-child(1) .item{animation:itemIn .2s var(--ease) both}
-.swipe-wrap:nth-child(2) .item{animation:itemIn .2s .04s var(--ease) both}
-.swipe-wrap:nth-child(3) .item{animation:itemIn .2s .08s var(--ease) both}
-.swipe-wrap:nth-child(4) .item{animation:itemIn .2s .11s var(--ease) both}
-.swipe-wrap:nth-child(n+5) .item{animation:itemIn .2s .14s var(--ease) both}
-.swipe-bg{position:absolute;inset:0;background:#ef4444;display:flex;align-items:center;justify-content:flex-end;padding-right:18px;border-radius:14px;opacity:0}
-.swipe-bg-txt{color:white;font-size:14px;font-weight:700}
+/* Swipe-to-delete: outer clips, inner is the red bg, item slides over it */
+.swipe-outer{position:relative;margin-bottom:7px;border-radius:14px;overflow:hidden;animation:itemIn .22s var(--ease) both}
+.swipe-outer:nth-child(2){animation-delay:.04s}
+.swipe-outer:nth-child(3){animation-delay:.08s}
+.swipe-outer:nth-child(4){animation-delay:.11s}
+.swipe-outer:nth-child(n+5){animation-delay:.14s}
+.swipe-wrap{position:relative;background:#ef4444;border-radius:14px}
+.swipe-delete-hint{position:absolute;right:16px;top:50%;transform:translateY(-50%);color:white;font-size:13px;font-weight:700;pointer-events:none;opacity:.9}
 .item{display:flex;align-items:center;gap:11px;background:var(--surf);border-radius:14px;padding:12px 13px;border:1px solid var(--brd);border-left-width:3px;position:relative;z-index:1;will-change:transform;touch-action:pan-y;transition:background .3s,border-color .3s}
 .item.done{opacity:.32}
 .ichk{width:22px;height:22px;border-radius:7px;border:1.5px solid;background:transparent;cursor:pointer;flex-shrink:0;padding:0;transition:all .18s var(--ease);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
@@ -261,7 +259,7 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 <script>
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v6.7.4';
+const VER='v6.7.5';
 
 const MEMBERS=[
   {name:'Mum',initials:'M',color:'#f472b6'},
@@ -830,75 +828,82 @@ function renderContent(){
     <div class="footer"><div class="fdot"></div><span class="ftxt">Synced · Firebase</span><span class="fver">${VER}</span></div>
   `;
   document.getElementById('mi')?.focus();
-  document.querySelectorAll('.swipe-wrap .item').forEach(bindSwipe);
+  document.querySelectorAll('.swipe-outer').forEach(bindSwipe);
   initTabSwipe();
 }
 
 function rItem(it,isDone){
   const m=getMem(it.addedBy),u=it.urgency!=null?URGENCY[it.urgency]:URGENCY[0];
-  const ub=`<span class="iurg" onclick="cycleUrg(event,'${it.id}')" style="color:${u.color}" title="Tap to change urgency"><span class="udot" style="background:${u.ring};margin-right:2px"></span>${u.label}</span>`;
-  const checkStyle=`border-color:${m.color}55${isDone?`;background:${m.color}22;color:${m.color}`:''}`;
-  const borderCol=isDone?`${u.color}55`:u.color;
-  const inner=`
-    <button class="ichk" style="${checkStyle}" onclick="toggleItem('${it.id}')">${isDone?'✓':''}</button>
-    <div class="ibody">
-      <div class="itext${isDone?' struck':''}">${esc(it.text)}</div>
-      <div class="imeta">
-        <span class="iname" style="color:${m.color}">${esc(it.addedBy)}</span>
-        ${ub}
-        <span class="itime">${isDone?`by ${esc(it.doneBy||'?')}`:timeAgo(it.ts)}</span>
-      </div>
-    </div>
-    <button class="del-btn" onclick="delItem('${it.id}')">×</button>`;
+  const ub=`<span class="iurg" onclick="cycleUrg(event,'${it.id}')" style="color:${u.color}"><span class="udot" style="background:${u.ring};margin-right:2px"></span>${u.label}</span>`;
+  const chk=`border-color:${m.color}55${isDone?`;background:${m.color}22;color:${m.color}`:''}`;
+  const bord=isDone?`${u.color}55`:u.color;
   return`<div class="swipe-outer">
     <div class="swipe-wrap" data-id="${it.id}">
-      <div class="item${isDone?' done':''}" style="border-left-color:${borderCol}">${inner}</div>
+      <span class="swipe-delete-hint">✕ Delete</span>
+      <div class="item${isDone?' done':''}" style="border-left-color:${bord}">
+        <button class="ichk" style="${chk}" onclick="toggleItem('${it.id}')">${isDone?'✓':''}</button>
+        <div class="ibody">
+          <div class="itext${isDone?' struck':''}">${esc(it.text)}</div>
+          <div class="imeta">
+            <span class="iname" style="color:${m.color}">${esc(it.addedBy)}</span>
+            ${ub}
+            <span class="itime">${isDone?`by ${esc(it.doneBy||'?')}`:timeAgo(it.ts)}</span>
+          </div>
+        </div>
+        <button class="del-btn" onclick="delItem('${it.id}')">×</button>
+      </div>
     </div>
   </div>`;
 }
 
 
-function bindSwipe(el){
-  // el is the .item element itself
-  const item = el;
-  const wrap = item.parentElement; // .swipe-wrap (has red bg)
-  const outer = wrap.parentElement; // .swipe-outer (has overflow:hidden)
-  if(!item || !wrap)return;
-  
-  let sx=0, cx=0, going=false, deleted=false;
-  
+function bindSwipe(outer){
+  const wrap = outer.querySelector('.swipe-wrap');
+  const item = outer.querySelector('.item');
+  if(!wrap || !item) return;
+
+  let startX=0, currentX=0, tracking=false, gone=false;
+
   item.addEventListener('touchstart', e=>{
-    if(deleted)return;
-    sx = e.touches[0].clientX;
-    cx = 0; going = true;
+    if(gone) return;
+    startX = e.touches[0].clientX;
+    currentX = 0;
+    tracking = true;
     item.style.transition = 'none';
   },{passive:true});
-  
+
   item.addEventListener('touchmove', e=>{
-    if(!going || deleted)return;
-    const dx = e.touches[0].clientX - sx;
-    if(dx < 0){
-      cx = Math.max(dx, -wrap.offsetWidth * 1.1);
-      item.style.transform = `translateX(${cx}px)`;
-    }
+    if(!tracking || gone) return;
+    const dx = e.touches[0].clientX - startX;
+    if(dx >= 0){ currentX=0; item.style.transform=''; return; }
+    currentX = Math.max(dx, -item.offsetWidth);
+    item.style.transform = `translateX(${currentX}px)`;
   },{passive:true});
-  
+
   item.addEventListener('touchend', ()=>{
-    if(!going || deleted)return;
-    going = false;
-    if(cx < -90){
-      // Commit delete - slide item fully off
-      deleted = true;
-      item.style.transition = 'transform .22s ease, opacity .18s ease';
-      item.style.transform = `translateX(-${wrap.offsetWidth + 20}px)`;
+    if(!tracking || gone) return;
+    tracking = false;
+    if(currentX < -85){
+      gone = true;
+      item.style.transition = 'transform .2s ease, opacity .15s ease';
+      item.style.transform = `translateX(-${item.offsetWidth + 10}px)`;
       item.style.opacity = '0';
-      setTimeout(()=>delItem(wrap.dataset.id), 220);
+      outer.style.transition = 'max-height .25s ease, opacity .2s ease, margin .25s ease';
+      outer.style.overflow = 'hidden';
+      setTimeout(()=>{
+        outer.style.maxHeight = outer.offsetHeight + 'px';
+        requestAnimationFrame(()=>{
+          outer.style.maxHeight = '0';
+          outer.style.opacity = '0';
+          outer.style.marginBottom = '0';
+        });
+        setTimeout(()=>delItem(wrap.dataset.id), 260);
+      }, 200);
     } else {
-      // Snap back
-      item.style.transition = 'transform .25s cubic-bezier(.4,0,.2,1)';
-      item.style.transform = 'translateX(0)';
+      item.style.transition = 'transform .2s cubic-bezier(.4,0,.2,1)';
+      item.style.transform = '';
+      currentX = 0;
     }
-    cx = 0;
   });
 }
 
