@@ -521,14 +521,7 @@ function pushBannerHTML(){
   </div>`;
 }
 
-async function sendPushNotif(title,body){
-  try{
-    fetch('/.netlify/functions/notify',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({payload:{title,body}})
-    });
-  }catch(e){}
-}
+function sendPushNotif(title,body){} // web push backend not available on GitHub Pages
 
 // ── TELEGRAM NOTIFICATIONS ──
 // Batched: collects items for 45s then sends one summary message
