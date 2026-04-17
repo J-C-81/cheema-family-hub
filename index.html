@@ -11,6 +11,8 @@
 <meta name="apple-mobile-web-app-title" content="Family Hub">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" id="tmeta" content="#0e1a2e">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon.png">
 <title>Cheema Family Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -259,7 +261,7 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
 const VAPID_PUB='BHeqNiEDdtZG2JXW-xhJxz8ARfkIPkyfgfQjt5rjf5a4I0nQJZYRqkPGXs-MnDkT6nc3W2lPH9IFlhGMzR4OJ-0';
-const VER='v6.6';
+const VER='v6.7.0';
 
 const MEMBERS=[
   {name:'Mum',initials:'M',color:'#f472b6'},
@@ -411,88 +413,179 @@ async function subscribePush(){
   }catch(e){console.log('Push subscribe:',e.message);return false;}
 }
 
-async function sendPush(title,body,tag){
+// ── TELEGRAM NOTIFICATIONS ──
+// Batched: collects items for 45s then sends one summary message
+// Config stored in Firebase under /tg_config — set once by any family member
+
+let tgCfg = null;          // {token, chatId} loaded from Firebase
+let notifBatch = [];       // pending items to notify
+let notifTimer = null;     // debounce timer
+
+async function loadTgCfg(){
   try{
-    await fetch('/.netlify/functions/notify',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({payload:{title,body,tag:'shopping_cart'}})
+    const r = await fetch('https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/tg_config.json');
+    const d = await r.json();
+    if(d && d.token && d.chatId) tgCfg = d;
+  }catch(e){}
+}
+
+async function saveTgCfg(token, chatId){
+  try{
+    await fetch('https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/tg_config.json',{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token, chatId})
+    });
+    tgCfg = {token, chatId};
+    return true;
+  }catch(e){return false;}
+}
+
+async function sendTelegram(text){
+  if(!tgCfg || !tgCfg.token || !tgCfg.chatId) return;
+  try{
+    await fetch(`https://api.telegram.org/bot${tgCfg.token}/sendMessage`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({chat_id: tgCfg.chatId, text, parse_mode:'HTML'})
     });
   }catch(e){}
 }
 
-// ── INSTALL PROMPT ──
-// Capture Chrome install prompt
-window.addEventListener('beforeinstallprompt',e=>{
-  e.preventDefault();
-  deferredInstall=e;
-  renderInstallBanner(); // re-render to show install button
-});
-
-function isStandalone(){
-  return window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone===true;
+// Queue a notification — batches within 45s window
+function queueNotif(type, who, text){
+  notifBatch.push({type, who, text, ts: Date.now()});
+  if(notifTimer) clearTimeout(notifTimer);
+  notifTimer = setTimeout(flushNotifs, 45000);
 }
 
-function isIOS(){
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+function flushNotifs(){
+  notifTimer = null;
+  if(!notifBatch.length) return;
+  const batch = [...notifBatch];
+  notifBatch = [];
+
+  // Group by type
+  const shop = batch.filter(x=>x.type==='shop');
+  const todo = batch.filter(x=>x.type==='todo');
+  const msgs = batch.filter(x=>x.type==='msg');
+
+  const lines = [];
+  if(shop.length === 1)
+    lines.push(`🛒 <b>${shop[0].who}</b> added to Shopping: <i>${shop[0].text}</i>`);
+  else if(shop.length > 1)
+    lines.push(`🛒 <b>${shop[0].who}</b> added ${shop.length} items to Shopping`);
+
+  if(todo.length === 1)
+    lines.push(`✅ <b>${todo[0].who}</b> added to To-Do: <i>${todo[0].text}</i>`);
+  else if(todo.length > 1)
+    lines.push(`✅ <b>${todo[0].who}</b> added ${todo.length} tasks to To-Do`);
+
+  if(msgs.length === 1)
+    lines.push(`💬 <b>${msgs[0].who}</b>: <i>${msgs[0].text}</i>`);
+  else if(msgs.length > 1)
+    lines.push(`💬 <b>${msgs[0].who}</b> sent ${msgs.length} messages`);
+
+  if(lines.length) sendTelegram(lines.join('\n'));
 }
 
-function renderInstallBanner(){
-  if(isStandalone())return; // Already installed — no need
-  const el=document.getElementById('install-login-banner');
-  if(!el)return;
-
-  if(deferredInstall){
-    // Android/Chrome — can trigger install directly
-    el.innerHTML=`<div class="install-banner">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v13M8 11l4 4 4-4"/><rect x="2" y="17" width="20" height="5" rx="1"/></svg>
-      <div class="ibtext"><strong>Install as an app</strong><span>Add to your home screen — works like a real app and enables notifications</span></div>
-      <button class="ibbtn" onclick="triggerInstall()">Install</button>
-      <button class="ibdis" onclick="this.closest('.install-banner').remove()">✕</button>
+// Telegram setup sheet
+function showNotifSetup(){
+  if(document.getElementById('tg-sheet')) return;
+  const hasConfig = tgCfg && tgCfg.token;
+  const s = document.createElement('div');
+  s.id = 'tg-sheet';
+  s.style.cssText='position:fixed;inset:0;z-index:200;display:flex;align-items:flex-end;justify-content:center;padding:16px;background:rgba(0,0,0,.6);animation:fadeUp .2s ease both';
+  s.innerHTML = hasConfig ? `
+    <div style="background:var(--surf);border-radius:22px;border:1px solid var(--brd);padding:24px 22px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,.5);animation:fadeUp .25s ease both">
+      <div style="font-size:16px;font-weight:800;margin-bottom:8px">✅ Notifications Active</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.5;margin-bottom:18px">Telegram notifications are set up. Anyone in the Cheema family Telegram group will get notified when items are added or messages sent.</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="testNotif()" style="flex:1;padding:10px;border-radius:12px;border:none;font-weight:700;font-size:13px;color:white;background:#0ea5e9;cursor:pointer">Send Test</button>
+        <button onclick="document.getElementById('tg-sheet').remove()" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--brd);font-weight:600;font-size:13px;color:var(--sub);background:var(--surf2);cursor:pointer">Close</button>
+      </div>
+    </div>` : `
+    <div style="background:var(--surf);border-radius:22px;border:1px solid var(--brd);padding:24px 22px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,.5);animation:fadeUp .25s ease both">
+      <div style="font-size:16px;font-weight:800;margin-bottom:6px">🔔 Set Up Notifications</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.55;margin-bottom:16px">One-time setup. Once done, <b style="color:var(--text)">everyone</b> in the family gets notified via Telegram.</div>
+      <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:18px">
+        <div style="background:var(--surf2);border-radius:11px;border:1px solid var(--brd);padding:11px 13px">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Step 1</div>
+          <div style="font-size:12px;color:var(--sub);line-height:1.5">Open Telegram and message <b style="color:#0ea5e9">@BotFather</b><br>Send: <code style="background:var(--surf3);padding:1px 5px;border-radius:4px;font-size:12px">/newbot</code> → follow prompts → copy the token it gives you</div>
+        </div>
+        <div style="background:var(--surf2);border-radius:11px;border:1px solid var(--brd);padding:11px 13px">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Step 2</div>
+          <div style="font-size:12px;color:var(--sub);line-height:1.5">Create a Telegram group, add everyone + your new bot to it. Then send any message in the group.</div>
+        </div>
+        <div style="background:var(--surf2);border-radius:11px;border:1px solid var(--brd);padding:11px 13px">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Step 3 — Enter details below</div>
+          <input id="tg-token" placeholder="Bot token (e.g. 1234567890:ABCdef...)" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--brd);background:var(--surf3);font-size:13px;color:var(--text);outline:none;margin-top:6px;font-family:monospace">
+          <button onclick="fetchChatId()" style="margin-top:8px;width:100%;padding:8px;border-radius:8px;border:1px solid #0ea5e944;background:#0ea5e91a;color:#0ea5e9;font-size:12px;font-weight:700;cursor:pointer">Auto-detect Group Chat ID</button>
+          <input id="tg-chatid" placeholder="Chat ID (auto-filled above, or enter manually)" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--brd);background:var(--surf3);font-size:13px;color:var(--text);outline:none;margin-top:8px;font-family:monospace">
+          <div id="tg-msg" style="font-size:11px;color:var(--sub);margin-top:6px;min-height:16px"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="saveTgSetup()" style="flex:1;padding:10px;border-radius:12px;border:none;font-weight:700;font-size:13px;color:white;background:#0ea5e9;cursor:pointer">Save & Enable</button>
+        <button onclick="document.getElementById('tg-sheet').remove()" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--brd);font-weight:600;font-size:13px;color:var(--sub);background:var(--surf2);cursor:pointer">Later</button>
+      </div>
     </div>`;
-  } else if(isIOS()){
-    // iOS — show manual instructions
-    el.innerHTML=`<div class="install-banner">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v13M8 11l4 4 4-4"/><rect x="2" y="17" width="20" height="5" rx="1"/></svg>
-      <div class="ibtext"><strong>Add to Home Screen</strong><span>Tap the Share button in Safari, then "Add to Home Screen" to install and enable notifications</span></div>
-      <button class="ibbtn" onclick="showIOSSheet()">How?</button>
-      <button class="ibdis" onclick="this.closest('.install-banner').remove()">✕</button>
-    </div>`;
-  }
-}
-
-async function triggerInstall(){
-  if(!deferredInstall)return;
-  deferredInstall.prompt();
-  const {outcome}=await deferredInstall.userChoice;
-  if(outcome==='accepted')deferredInstall=null;
-  renderInstallBanner();
-}
-
-function showIOSSheet(){
-  if(document.getElementById('ios-sheet'))return;
-  const s=document.createElement('div');
-  s.id='ios-sheet';s.className='sheet-overlay';
-  s.innerHTML=`<div class="sheet">
-    <h3>📲 Install on iPhone</h3>
-    <p>To install as an app and get notifications, follow these steps in <b>Safari</b>:</p>
-    <div class="steps">
-      <div class="step"><div class="step-num">1</div><div class="step-txt">Tap the <b>Share button</b> at the bottom of Safari (the square with an arrow)</div></div>
-      <div class="step"><div class="step-num">2</div><div class="step-txt">Scroll down and tap <b>"Add to Home Screen"</b></div></div>
-      <div class="step"><div class="step-num">3</div><div class="step-txt">Tap <b>Add</b> in the top right</div></div>
-      <div class="step"><div class="step-num">4</div><div class="step-txt">Open <b>Family Hub</b> from your home screen, then enable notifications when asked</div></div>
-    </div>
-    <div class="sheet-btns">
-      <button class="sheet-sec" onclick="closeSheet('ios-sheet')">Got it</button>
-    </div>
-  </div>`;
-  s.addEventListener('click',e=>{if(e.target===s)closeSheet('ios-sheet');});
+  s.addEventListener('click', e=>{if(e.target===s)s.remove()});
   document.body.appendChild(s);
 }
 
-function closeSheet(id){
-  const s=document.getElementById(id);
-  if(s){s.style.opacity='0';s.style.transition='opacity .18s';setTimeout(()=>s.remove(),200);}
+async function fetchChatId(){
+  const token = document.getElementById('tg-token')?.value.trim();
+  const msg = document.getElementById('tg-msg');
+  if(!token){if(msg)msg.textContent='Enter bot token first';return;}
+  if(msg)msg.textContent='Fetching…';
+  try{
+    const r = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+    const d = await r.json();
+    if(!d.ok){if(msg)msg.textContent='Invalid token — check and try again';return;}
+    const upd = d.result;
+    if(!upd || !upd.length){
+      if(msg)msg.textContent='No messages found — send a message in the group first, then try again';
+      return;
+    }
+    // Find a group chat
+    let chatId = null;
+    for(const u of upd){
+      const chat = u.message?.chat || u.channel_post?.chat;
+      if(chat && (chat.type==='group'||chat.type==='supergroup')){chatId=chat.id;break;}
+    }
+    if(!chatId){
+      // Fall back to any chat
+      const any = upd[upd.length-1];
+      chatId = any.message?.chat?.id || any.channel_post?.chat?.id;
+    }
+    if(chatId){
+      document.getElementById('tg-chatid').value = chatId;
+      if(msg)msg.style.color='#22c55e',msg.textContent='✓ Chat ID found: '+chatId;
+    } else {
+      if(msg)msg.textContent='Could not detect chat — send a message in the group then retry';
+    }
+  }catch(e){if(msg)msg.textContent='Error: '+e.message;}
+}
+
+async function saveTgSetup(){
+  const token = document.getElementById('tg-token')?.value.trim();
+  const chatId = document.getElementById('tg-chatid')?.value.trim();
+  const msg = document.getElementById('tg-msg');
+  if(!token||!chatId){if(msg)msg.textContent='Both fields required';return;}
+  if(msg)msg.textContent='Saving…';
+  const ok = await saveTgCfg(token, chatId);
+  if(ok){
+    await sendTelegram('✅ Cheema Family Hub notifications are now active!');
+    document.getElementById('tg-sheet')?.remove();
+  } else {
+    if(msg)msg.textContent='Save failed — check your connection';
+  }
+}
+
+async function testNotif(){
+  await sendTelegram('🔔 Test from Cheema Family Hub — notifications working!');
+  document.getElementById('tg-sheet')?.remove();
 }
 
 // ── SCREENS ──
@@ -794,7 +887,7 @@ function addItem(){
   if(isS)state.shop=[it,...state.shop];else state.todo=[it,...state.todo];
   if(isS)shopUrg=0;else todoUrg=0;
   inp.value='';renderTabs();renderContent();save();
-  sendPush(`${member} → ${isS?'Shopping':'To-Do'}`,text);
+  queueNotif(isS?'shop':'todo', member, text);
 }
 function setUrg(i){
   const inp=document.getElementById('mi'),saved=inp?inp.value:'';
@@ -824,7 +917,7 @@ function postNote(){
   const inp=document.getElementById('ni'),text=inp?.value.trim();if(!text)return;
   state.notes=[{id:genId(),text,author:member,ts:Date.now(),reactions:{}},...state.notes];
   inp.value='';renderContent();save();
-  sendPush(`💬 ${member}`,text);
+  queueNotif('msg', member, text);
 }
 function delNote(id){state.notes=state.notes.filter(n=>n.id!==id);renderContent();save();}
 function setFilter(n){if(tabIdx===0)shopFilter=n;else todoFilter=n;renderContent();}
@@ -836,7 +929,7 @@ async function init(){
   try{
     const d=await fbRead();
     state={shop:d.shop,todo:d.todo,notes:d.notes};lastTs=d.updatedAt;
-    setStatus('live');renderLogin();showScreen('login');startPoll();
+    setStatus('live');renderLogin();showScreen('login');startPoll();loadTgCfg();
     // If already running as installed PWA with permission, re-subscribe
     if(isStandalone()&&'Notification' in window&&Notification.permission==='granted'){
       subscribePush();
