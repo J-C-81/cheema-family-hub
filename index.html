@@ -260,7 +260,7 @@ body.light header{background:rgba(237,243,255,.94);backdrop-filter:blur(22px);-w
 <script>
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v6.7.1';
+const VER='v6.7.2';
 
 const MEMBERS=[
   {name:'Mum',initials:'M',color:'#f472b6'},
@@ -995,23 +995,44 @@ function delNote(id){state.notes=state.notes.filter(n=>n.id!==id);renderContent(
 function setFilter(n){if(tabIdx===0)shopFilter=n;else todoFilter=n;renderContent();}
 
 // ── INIT ──
+// ── MISSING STUBS (cleanup of old code) ──
+function isStandalone(){
+  return window.matchMedia('(display-mode: standalone)').matches ||
+         window.navigator.standalone === true;
+}
+function isIOS(){
+  return /iP(hone|ad|od)/.test(navigator.userAgent);
+}
+function renderInstallBanner(){}  // handled inline
+function showIOSSheet(){}         // not used
+function triggerInstall(){
+  if(window._deferredInstall){window._deferredInstall.prompt();}
+}
+
+
 async function init(){
-  initTheme();showScreen('loading');
-  await initSW();
+  try{initTheme();}catch(e){}
+  showScreen('loading');
+  try{await initSW();}catch(e){}
   try{
     const d=await fbRead();
     state={shop:d.shop,todo:d.todo,notes:d.notes};lastTs=d.updatedAt;
     setStatus('live');
+  }catch(e){
+    setStatus('error');
+    renderLogin();showScreen('login');
+    return;
+  }
+  try{
+    renderLogin();
     const saved=localStorage.getItem('cfh_member');
     const savedMem=saved&&MEMBERS.find(m=>m.name===saved);
-    if(savedMem){renderLogin();selectMember(saved);}
-    else{renderLogin();showScreen('login');}
-    startPoll();loadTgCfg();initPush();
-    // If already running as installed PWA with permission, re-subscribe
-    if(isStandalone()&&'Notification' in window&&Notification.permission==='granted'){
-      subscribePush();
-    }
-  }catch(e){setStatus('error');renderLogin();showScreen('login');}
+    if(savedMem){selectMember(saved);}
+    else{showScreen('login');}
+    startPoll();
+  }catch(e){showScreen('login');}
+  try{loadTgCfg();}catch(e){}
+  try{initPush();}catch(e){}
 }
 init();
 </script>
