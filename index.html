@@ -323,7 +323,7 @@ body.light header{background:rgba(238,242,255,.95);backdrop-filter:blur(24px);-w
 <script>
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.0.3';
+const VER='v7.0.4';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev'; // set to Cloudflare worker URL when available
 
 const MEMBERS=[
@@ -517,9 +517,12 @@ async function subscribePush(){
         await navigator.serviceWorker.ready;
         sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});
       }
-    const key=btoa(sub.endpoint).slice(-22).replace(/[^a-zA-Z0-9]/g,'');
-    await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,
+    // Simple stable key from endpoint
+    const key=sub.endpoint.split('/').pop().replace(/[^a-zA-Z0-9]/g,'').slice(-20)||'sub'+Date.now();
+    console.log('[CFH] Storing sub key:',key,'endpoint:',sub.endpoint.slice(0,60));
+    const res=await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,
       {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(sub.toJSON())});
+    console.log('[CFH] Sub stored, status:',res.status);
     return true;
   }catch(e){return false;}
 }
@@ -536,10 +539,11 @@ async function sendTelegram(text){
   if(!tgCfg)return;
   try{fetch(`https://api.telegram.org/bot${tgCfg.token}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:tgCfg.chatId,text,parse_mode:'HTML'})});}catch(e){}
 }
-function queueNotif(type,who,text){
+function queueNotif(type,who,text){console.log("[NOTIF] queueing:",type,who,text);
   notifBatch.push({type,who,text});
   if(notifTimer2)clearTimeout(notifTimer2);
   notifTimer2=setTimeout(()=>{
+    
     // 5s delay for testing, increase to 45000 for production
     const b=[...notifBatch];notifBatch=[];
     const shop=b.filter(x=>x.type==='shop'),todo=b.filter(x=>x.type==='todo'),msgs=b.filter(x=>x.type==='msg');
