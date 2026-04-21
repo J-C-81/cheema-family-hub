@@ -323,7 +323,7 @@ body.light header{background:rgba(238,242,255,.95);backdrop-filter:blur(24px);-w
 <script>
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.0.1';
+const VER='v7.0.2';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev'; // set to Cloudflare worker URL when available
 
 const MEMBERS=[
@@ -501,7 +501,7 @@ function b64ToU8(b64){
 }
 async function initSW(){
   if(!('serviceWorker' in navigator))return;
-  try{swReg=await navigator.serviceWorker.register('/sw.js');}catch(e){}
+  try{swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});}catch(e){console.log('SW:',e);}
 }
 async function subscribePush(){
   if(!swReg||!('PushManager' in window))return false;
@@ -509,7 +509,14 @@ async function subscribePush(){
     const perm=await Notification.requestPermission();
     if(perm!=='granted')return false;
     let sub=await swReg.pushManager.getSubscription();
-    if(!sub)sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});
+    if(!sub){
+        // Make sure SW is ready
+        if(!swReg){
+          try{swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});}catch(e){}
+        }
+        await navigator.serviceWorker.ready;
+        sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});
+      }
     const key=btoa(sub.endpoint).slice(-22).replace(/[^a-zA-Z0-9]/g,'');
     await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,
       {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(sub.toJSON())});
@@ -655,7 +662,7 @@ function setSort(v){if(tabIdx===0)shopSort=v;else todoSort=v;renderContent();}
 function notifBar(){
   if(notifDismissed||!('Notification' in window))return'';
   if(Notification.permission==='granted')return'';
-  if(!isStandalone())return`<div class="notif-bar"><span class="notif-bar-txt">📲 Add to home screen to enable notifications</span><button class="notif-bar-dis" onclick="notifDismissed=true;renderContent()">✕</button></div>`;
+  if(!isStandalone()&&isIOS())return`<div class="notif-bar"><span class="notif-bar-txt">📲 Open from home screen icon to enable notifications</span><button class="notif-bar-dis" onclick="notifDismissed=true;renderContent()">✕</button></div>`;
   return`<div class="notif-bar"><span class="notif-bar-txt">🔔 Tap to get notifications</span><button class="notif-bar-act" onclick="doEnableNotifs()">Enable</button><button class="notif-bar-dis" onclick="notifDismissed=true;renderContent()">✕</button></div>`;
 }
 async function doEnableNotifs(){
@@ -1092,8 +1099,9 @@ function renderInstallBanner(){}
 async function initPush(){
   if(!('serviceWorker' in navigator)||!('PushManager' in window))return;
   try{
+    if(!swReg)swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});
     await navigator.serviceWorker.ready;
-    const existing=(await(await navigator.serviceWorker.ready).pushManager.getSubscription());
+    const existing=await swReg.pushManager.getSubscription();
     if(existing&&Notification.permission==='granted'){
       const key=btoa(existing.endpoint).slice(-22).replace(/[^a-zA-Z0-9]/g,'');
       await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(existing.toJSON())});
