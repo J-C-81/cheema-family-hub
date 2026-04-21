@@ -323,7 +323,7 @@ body.light header{background:rgba(238,242,255,.95);backdrop-filter:blur(24px);-w
 <script>
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.0.2';
+const VER='v7.0.3';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev'; // set to Cloudflare worker URL when available
 
 const MEMBERS=[
@@ -540,6 +540,7 @@ function queueNotif(type,who,text){
   notifBatch.push({type,who,text});
   if(notifTimer2)clearTimeout(notifTimer2);
   notifTimer2=setTimeout(()=>{
+    // 5s delay for testing, increase to 45000 for production
     const b=[...notifBatch];notifBatch=[];
     const shop=b.filter(x=>x.type==='shop'),todo=b.filter(x=>x.type==='todo'),msgs=b.filter(x=>x.type==='msg');
     const lines=[];
@@ -550,7 +551,7 @@ function queueNotif(type,who,text){
     if(msgs.length===1)lines.push(`💬 <b>${msgs[0].who}</b>: <i>${msgs[0].text}</i>`);
     else if(msgs.length>1)lines.push(`💬 <b>${msgs[0].who}</b> sent ${msgs.length} messages`);
     if(lines.length){sendTelegram(lines.join('\n'));sendPushNotif('Cheema Family Hub',lines.map(l=>l.replace(/<[^>]+>/g,'')).join(' · '));}
-  },45000);
+  },5000);
 }
 
 // ── SEARCH ──
@@ -1048,6 +1049,8 @@ function addItem(){
   if(isS){shopUrg=0;shopCat='';}else{todoUrg=0;todoCat='';}
   inp.value='';shouldFocus=true;haptic(8);renderTabs();renderContent();save();
   queueNotif(isS?'shop':'todo',member,text);
+  // Also send immediately so we don't have to wait
+  sendPushNotif(`${member} added to ${isS?'Shopping':'To-Do'}`,text);
 }
 function setUrg(i){
   const inp=document.getElementById('mi'),saved=inp?inp.value:'';
