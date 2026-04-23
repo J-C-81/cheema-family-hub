@@ -101,12 +101,6 @@ body.light header{background:rgba(238,242,255,.95);backdrop-filter:blur(24px);-w
 .m-chip:active{opacity:.7}
 .chip-name{font-size:11px;font-weight:600;color:var(--sub);white-space:nowrap;max-width:72px;overflow:hidden;text-overflow:ellipsis}
 
-/* ── SEARCH BAR ── */
-.search-bar{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:0 2px;animation:fadeUp .18s var(--ease) both}
-.search-input{flex:1;background:var(--surf2);border:1.5px solid var(--brd);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;outline:none;color:var(--text);transition:border-color .15s}
-.search-input:focus{border-color:var(--brd2)}
-.search-clear{background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:4px;transition:color .15s}
-.search-clear:active{color:var(--sub)}
 
 /* ── TABS ── */
 .tabs-row{display:flex;align-items:flex-end}
@@ -307,13 +301,11 @@ body.light header{background:rgba(238,242,255,.95);backdrop-filter:blur(24px);-w
         <div class="h-meta"><div class="h-lbl">Cheema Family</div><div class="h-title" id="htitle">Family Hub</div></div>
       </div>
       <div class="h-right">
-        <button class="hbtn" onclick="toggleSearch()" id="searchbtn" title="Search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
         <button class="hbtn" id="themebtn" onclick="toggleTheme()"><svg id="theme-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
         <div class="status-pill"><div class="sdot" id="sdot"></div><div class="stxt" id="stxt">Live</div></div>
         <button class="m-chip" onclick="doLogout()"><div class="av" id="hav"></div><span class="chip-name" id="hname"></span></button>
       </div>
     </div>
-    <div id="search-bar-wrap"></div>
     <div class="tabs-row" id="tabs"></div>
   </header>
   <div class="ptr" id="ptr"><div class="ptr-spin"></div> Refreshing…</div>
@@ -323,7 +315,7 @@ body.light header{background:rgba(238,242,255,.95);backdrop-filter:blur(24px);-w
 <script>
 // ── CONFIG ──
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.0.4';
+const VER='v5.0.0';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev'; // set to Cloudflare worker URL when available
 
 const MEMBERS=[
@@ -372,12 +364,11 @@ const CAT_HINTS={
 let state={shop:[],todo:[],notes:[],notices:[]};
 let member=null,tabIdx=0;
 let shopSort='recency-desc',todoSort='urgency-desc';
-let shopFilter='All',todoFilter='All';
+let shopFilters=new Set(['All']),todoFilters=new Set(['All']);
 let shopUrg=0,todoUrg=0,shopCat='',todoCat='';
 let lastTs=0,isSaving=false,pollTimer=null;
 let openPicker=null,transitioning=false;
 let notifDismissed=false,swReg=null,shouldFocus=false;
-let searchOpen=false,searchQuery='';
 let showNoticeCompose=false,showPollCompose=false,pollOpts=['',''];
 let undoTimer=null;
 let lastReadNotes=0; // localStorage per member
@@ -558,24 +549,6 @@ function queueNotif(type,who,text){console.log("[NOTIF] queueing:",type,who,text
   },5000);
 }
 
-// ── SEARCH ──
-function toggleSearch(){
-  searchOpen=!searchOpen;
-  if(!searchOpen)searchQuery='';
-  const wrap=document.getElementById('search-bar-wrap');
-  if(searchOpen){
-    wrap.innerHTML=`<div class="search-bar"><input class="search-input" id="sq" placeholder="Search everything…" value="${esc(searchQuery)}" oninput="searchQuery=this.value;renderContent()"><button class="search-clear" onclick="toggleSearch()">✕</button></div>`;
-    setTimeout(()=>document.getElementById('sq')?.focus(),50);
-  }else{
-    wrap.innerHTML='';
-    renderContent();
-  }
-}
-function matchSearch(text){
-  if(!searchQuery)return true;
-  return text.toLowerCase().includes(searchQuery.toLowerCase());
-}
-
 // ── SCREENS ──
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
 function doLogout(){
@@ -646,20 +619,23 @@ function renderTabs(){
 
 async function setTab(i){
   if(transitioning||i===tabIdx)return;
+  if(typeof filterSheetOpen!=='undefined'&&filterSheetOpen)closeFilterSheet();
   transitioning=true;
   const dir=i>tabIdx?1:-1;
-  const c=document.getElementById('content');
-  c.style.transition='opacity .18s ease,transform .18s ease';
-  c.style.opacity='0';c.style.transform=`translateX(${dir*20}px)`;
-  await sleep(185);
+  const cont=document.getElementById('content');
+  const W=cont.offsetWidth||window.innerWidth;
+  cont.style.transition='transform .3s cubic-bezier(.4,0,.2,1)';
+  cont.style.transform=`translateX(${-dir*W}px)`;
+  await sleep(300);
   tabIdx=i;
   if(i===2){lastReadNotes=Date.now();localStorage.setItem('cfh_read_'+member,lastReadNotes);}
   renderTabs();renderContent();
-  c.style.transition='none';c.style.opacity='0';c.style.transform=`translateX(${-dir*20}px)`;
-  c.offsetHeight;
-  c.style.transition='opacity .24s ease,transform .24s ease';
-  c.style.opacity='1';c.style.transform='none';
-  setTimeout(()=>{transitioning=false;},260);
+  cont.style.transition='none';
+  cont.style.transform=`translateX(${dir*W}px)`;
+  cont.offsetHeight;
+  cont.style.transition='transform .3s cubic-bezier(.4,0,.2,1)';
+  cont.style.transform='';
+  setTimeout(()=>{cont.style.transition='';transitioning=false;},320);
 }
 function setSort(v){if(tabIdx===0)shopSort=v;else todoSort=v;renderContent();}
 
@@ -680,17 +656,17 @@ function renderContent(){
   const c=document.getElementById('content'),acc=TABS[tabIdx].accent;
   if(tabIdx===2){c.innerHTML=buildMsgs();bindMsgEv();initTabSwipe();return;}
   const isS=tabIdx===0,list=isS?state.shop:state.todo;
-  const sort=isS?shopSort:todoSort,filter=isS?shopFilter:todoFilter;
+  const sort=isS?shopSort:todoSort,filter=isS?shopFilters:todoFilters;
   const urg=isS?shopUrg:todoUrg,cat=isS?shopCat:todoCat;
-  let filtered=filter==='All'?list:list.filter(i=>i.addedBy===filter);
+  let filtered=filter.has('All')?list:list.filter(i=>filter.has(i.addedBy));
   if(cat)filtered=filtered.filter(i=>(i.cat||'')===(cat));
-  if(searchQuery)filtered=filtered.filter(i=>matchSearch(i.text));
+  
   const pending=sortList(filtered.filter(i=>!i.done),sort),done=sortList(filtered.filter(i=>i.done),sort);
   const notices=state.notices||[];
   const noticeHTML=notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">📌 Notices</span></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:'' ;
 
   const pills=['All',...MEMBERS.map(x=>x.name)].map(n=>{
-    const mx=n==='All'?null:getMem(n),active=filter===n,col=mx?mx.color:acc;
+    const mx=n==='All'?null:getMem(n),active=filter.has(n),col=mx?mx.color:acc;
     return`<button class="f-btn" onclick="setFilter('${n}')" style="border-color:${active?col:'var(--brd)'};background:${active?col+'18':'transparent'};color:${active?col:'var(--muted)'}">
       ${mx?`<div class="av" style="width:12px;height:12px;font-size:5.5px;color:${mx.color};background:${mx.color}18;border:1px solid ${mx.color}44;border-radius:30%">${mx.initials}</div>`:''}
       ${esc(n)}</button>`;
@@ -793,58 +769,118 @@ function bindSwipe(outer){
   const wrap=outer.querySelector('.swipe-wrap');
   const item=outer.querySelector('.item');
   if(!wrap||!item)return;
-  let sx=0,cx=0,going=false,gone=false;
-  item.addEventListener('touchstart',e=>{if(gone)return;sx=e.touches[0].clientX;cx=0;going=true;item.style.transition='none';},{passive:true});
-  item.addEventListener('touchmove',e=>{
-    if(!going||gone)return;
-    const dx=e.touches[0].clientX-sx;
-    if(dx>=0){cx=0;item.style.transform='';return;}
-    cx=Math.max(dx,-item.offsetWidth);
-    item.style.transform=`translateX(${cx}px)`;
+  let sx=0,sy=0,cx=0,gone=false,dir=null; // dir: null, 'h', 'v'
+
+  item.addEventListener('touchstart',e=>{
+    if(gone)return;
+    sx=e.touches[0].clientX; sy=e.touches[0].clientY;
+    cx=0; dir=null;
+    item.style.transition='none';
   },{passive:true});
+
+  item.addEventListener('touchmove',e=>{
+    if(gone)return;
+    const dx=e.touches[0].clientX-sx;
+    const dy=e.touches[0].clientY-sy;
+    if(dir===null&&(Math.abs(dx)>6||Math.abs(dy)>6)){
+      // Decide on first meaningful movement
+      dir=Math.abs(dx)>Math.abs(dy)*1.2?'h':'v';
+    }
+    if(dir!=='h')return; // vertical scroll — don't touch transform
+    if(dx>4){item.style.transform='';wrap.classList.remove('swiping');return;} // right swipe ignored
+    cx=Math.max(dx,-item.offsetWidth*0.85);
+    item.style.transform=`translateX(${cx}px)`;
+    wrap.classList.toggle('swiping',cx<-24);
+  },{passive:true});
+
   item.addEventListener('touchend',()=>{
-    if(!going||gone)return;going=false;
-    if(cx<-80){
-      gone=true;haptic([8,30,12]);
-      item.style.transition='transform .18s ease,opacity .14s ease';
-      item.style.transform=`translateX(-${item.offsetWidth+10}px)`;
+    if(gone)return;
+    if(dir!=='h'){
+      cx=0;wrap.classList.remove('swiping');dir=null;return;
+    }
+    dir=null;
+    if(cx<-item.offsetWidth*0.38){
+      // Delete
+      gone=true; haptic([8,30,12]);
+      wrap.classList.add('swiping');
+      item.style.transition='transform .22s ease, opacity .16s ease';
+      item.style.transform=`translateX(-${item.offsetWidth+20}px)`;
       item.style.opacity='0';
-      outer.style.transition='max-height .22s ease,opacity .18s ease,margin .22s ease';
-      outer.style.overflow='hidden';
       setTimeout(()=>{
+        outer.style.transition='max-height .3s ease, margin-bottom .3s ease, opacity .24s ease';
+        outer.style.overflow='hidden';
         outer.style.maxHeight=outer.offsetHeight+'px';
-        requestAnimationFrame(()=>{outer.style.maxHeight='0';outer.style.opacity='0';outer.style.marginBottom='0';});
-        setTimeout(()=>delItem(wrap.dataset.id),240);
-      },180);
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{
+          outer.style.maxHeight='0';
+          outer.style.opacity='0';
+          outer.style.marginBottom='0';
+        }));
+        setTimeout(()=>delItem(wrap.dataset.id),320);
+      },200);
     }else{
-      item.style.transition='transform .2s cubic-bezier(.4,0,.2,1)';
-      item.style.transform='';cx=0;
+      // Snap back with spring
+      item.style.transition='transform .28s cubic-bezier(.34,1.4,.64,1)';
+      item.style.transform='';
+      wrap.classList.remove('swiping');
+      cx=0;
     }
   });
 }
 
+
 // ── PULL TO REFRESH ──
 function initPullRefresh(){
-  const c=document.getElementById('content'),ptr=document.getElementById('ptr');
-  if(!c||!ptr||c._ptr)return;
-  c._ptr=true;
-  let sy=0,pulling=false;
-  c.addEventListener('touchstart',e=>{if(c.scrollTop===0){sy=e.touches[0].clientY;pulling=true;}},{passive:true});
-  c.addEventListener('touchmove',e=>{
+  const cont=document.getElementById('content'),ptr=document.getElementById('ptr');
+  if(!cont||!ptr||cont._ptr)return;
+  cont._ptr=true;
+  let sy=0,pulling=false,triggered=false,refreshing=false;
+
+  cont.addEventListener('touchstart',e=>{
+    if(cont.scrollTop!==0||refreshing)return;
+    sy=e.touches[0].clientY;pulling=true;triggered=false;
+  },{passive:true});
+
+  cont.addEventListener('touchmove',e=>{
     if(!pulling)return;
     const dy=e.touches[0].clientY-sy;
-    if(dy>40&&c.scrollTop===0){ptr.classList.add('show');}
-  },{passive:true});
-  c.addEventListener('touchend',async e=>{
-    if(!pulling)return;pulling=false;
-    const dy=e.changedTouches[0].clientY-sy;
-    if(dy>55&&c.scrollTop===0){
-      try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices};lastTs=d.updatedAt;cacheState();setOffline(false);}catch(e2){}
-      renderContent();renderTabs();
+    if(dy<=0||cont.scrollTop>0){ptr.classList.remove('show');triggered=false;return;}
+    const pull=Math.min(dy*0.45,80);
+    cont.style.transition='none';
+    cont.style.transform=`translate3d(0,${pull}px,0)`;
+    if(pull>=40){
+      ptr.classList.add('show');
+      if(pull>=58&&!triggered){triggered=true;haptic(14);}
+    }else{
+      ptr.classList.remove('show');triggered=false;
     }
+  },{passive:true});
+
+  cont.addEventListener('touchend',async()=>{
+    if(!pulling)return;pulling=false;
+    cont.style.transition='transform .32s cubic-bezier(.4,0,.2,1)';
+    cont.style.transform='translate3d(0,0,0)';
+    if(!triggered){
+      setTimeout(()=>{cont.style.transition='';cont.style.transform='';},340);
+      ptr.classList.remove('show');
+      return;
+    }
+    refreshing=true;
+    ptr.classList.add('show');
+    const t0=Date.now();
+    try{
+      const d=await fbRead();
+      state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices};
+      lastTs=d.updatedAt;cacheState();setOffline(false);
+    }catch(e2){}
+    const elapsed=Date.now()-t0;
+    if(elapsed<900)await sleep(900-elapsed);
     ptr.classList.remove('show');
+    setTimeout(()=>{cont.style.transition='';cont.style.transform='';},340);
+    refreshing=false;
+    renderContent();renderTabs();
   },{passive:true});
 }
+
 
 // ── MESSAGES ──
 function buildMsgs(){
@@ -856,7 +892,7 @@ function buildMsgs(){
 
   const feed=state.notes.length===0
     ?`<div class="empty"><div class="empty-icon">💬</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`
-    :state.notes.filter(n=>!searchQuery||matchSearch(n.q||n.text||'')).map(n=>{
+    :state.notes.filter(n=>n).map(n=>{
       const auth=getMem(n.author),isMe=n.author===member;
       if(n.type==='poll')return renderPollBubble(n,auth,isMe);
       const rx=n.reactions||{};
@@ -1092,9 +1128,38 @@ function clearDone(){
 }
 function postNote(){
   const inp=document.getElementById('ni'),text=inp?.value.trim();if(!text)return;
-  state.notes=[{id:genId(),text,author:member,ts:Date.now(),reactions:{}},...state.notes];
-  inp.value='';haptic(8);renderContent();save();
+  const note={id:genId(),text,author:member,ts:Date.now(),reactions:{}};
+  state.notes=[note,...state.notes];
+  inp.value='';haptic(8);
+  // Don't call renderContent() — that dismisses keyboard
+  // Instead inject new message into DOM directly
+  const feed=document.querySelector('.msg-feed');
+  if(feed){
+    const auth=getMem(member);
+    const div=document.createElement('div');
+    div.className='nwrap mine';
+    div.style.cssText='animation:itemIn .2s var(--ease) both';
+    div.innerHTML=`
+      <div class="nhdr" style="flex-direction:row-reverse">
+        <div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div>
+        <span class="nauthor" style="color:${auth.color}">${esc(member)}</span>
+        <span class="ntime">just now</span>
+      </div>
+      <div class="nbubble mine" style="background:${auth.color}18;border-color:${auth.color}44">
+        <div class="ntext">${esc(text)}</div>
+      </div>
+      <div class="rbar" id="rb${note.id}"><button class="radd" onclick="showPicker(event,'${note.id}')">+</button></div>
+      <button class="ndel" onclick="delNote('${note.id}')">Delete</button>`;
+    feed.insertBefore(div,feed.firstChild);
+    // Remove empty state if present
+    feed.querySelector('.empty')?.remove();
+  }
+  // Keep textarea focused
+  inp.focus();
+  save();
   queueNotif('msg',member,text);
+  // Update unread badge in background
+  renderTabs();
 }
 function delNote(id){state.notes=state.notes.filter(n=>n.id!==id);renderContent();save();}
 function setFilter(n){if(tabIdx===0)shopFilter=n;else todoFilter=n;renderContent();}
@@ -1121,24 +1186,74 @@ function initTabSwipe(){
   const content=document.getElementById('content');
   if(!content||content._tsb)return;
   content._tsb=true;
-  let sx=0,sy=0,active=false,decided=false;
-  content.addEventListener('touchstart',e=>{
-    active=false;decided=false;
-    if(e.target.closest('.swipe-outer,.item,.swipe-wrap,.filter-row,.urg-row,.cat-row,.msg-feed,.poll-option,.input-card'))return;
-    sx=e.touches[0].clientX;sy=e.touches[0].clientY;active=true;
-  },{passive:true});
-  content.addEventListener('touchmove',e=>{
-    if(!active)return;
-    const dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
-    if(!decided&&(Math.abs(dx)>8||Math.abs(dy)>8)){decided=true;if(Math.abs(dy)>Math.abs(dx)*.8)active=false;}
-  },{passive:true});
-  content.addEventListener('touchend',e=>{
-    if(!active)return;active=false;
-    const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
-    if(Math.abs(dx)<65||Math.abs(dy)>Math.abs(dx)*.6||transitioning)return;
+
+  let sx=0,sy=0,mode=null; // mode: null=undecided, 'tab'=tab-switch, 'other'=let browser handle
+
+  function onTouchStart(e){
+    mode=null;
+    sx=e.touches[0].clientX;
+    sy=e.touches[0].clientY;
+    // Always listen — we'll decide what to do on move
+  }
+
+  function onTouchMove(e){
+    if(mode==='other')return;
+    const dx=e.touches[0].clientX-sx;
+    const dy=e.touches[0].clientY-sy;
+    if(Math.abs(dx)<6&&Math.abs(dy)<6)return;
+    if(mode===null){
+      const isEdge=sx<window.innerWidth*0.2||sx>window.innerWidth*0.8;
+      const isHoriz=Math.abs(dx)>Math.abs(dy)*0.9;
+      const onItem=e.target.closest('.item,.swipe-wrap,.swipe-outer');
+      if(isHoriz&&!onItem){
+        // Edge swipe always starts tab switch
+        // Interior swipe also starts tab switch IF not on an item
+        mode='tab';
+      }else if(isEdge&&isHoriz){
+        mode='tab'; // edge overrides items too
+      }else{
+        mode='other';
+      }
+    }
+  }
+
+  function onTouchEnd(e){
+    if(mode!=='tab'){mode=null;return;}
+    mode=null;
+    const dx=e.changedTouches[0].clientX-sx;
+    const dy=e.changedTouches[0].clientY-sy;
+    if(Math.abs(dx)<50||Math.abs(dy)>Math.abs(dx)*0.7||transitioning)return;
     if(dx<0&&tabIdx<TABS.length-1)setTab(tabIdx+1);
     else if(dx>0&&tabIdx>0)setTab(tabIdx-1);
-  },{passive:true});
+  }
+
+  content.addEventListener('touchstart',onTouchStart,{passive:true});
+  content.addEventListener('touchmove',onTouchMove,{passive:true});
+  content.addEventListener('touchend',onTouchEnd,{passive:true});
+
+  // Also listen on the whole page for edge swipes (catches header/empty areas)
+  if(!document._edgeSwipe){
+    document._edgeSwipe=true;
+    let esx=0,esy=0,eMode=null;
+    document.addEventListener('touchstart',e=>{
+      esx=e.touches[0].clientX;esy=e.touches[0].clientY;eMode=null;
+    },{passive:true});
+    document.addEventListener('touchmove',e=>{
+      if(eMode==='done')return;
+      const dx=e.touches[0].clientX-esx,dy=e.touches[0].clientY-esy;
+      if(Math.abs(dx)<8&&Math.abs(dy)<8)return;
+      const isEdge=esx<window.innerWidth*0.18||esx>window.innerWidth*0.82;
+      if(isEdge&&Math.abs(dx)>Math.abs(dy)){eMode='edge';}else{eMode='done';}
+    },{passive:true});
+    document.addEventListener('touchend',e=>{
+      if(eMode!=='edge'){eMode=null;return;}
+      eMode='done';
+      const dx=e.changedTouches[0].clientX-esx,dy=e.changedTouches[0].clientY-esy;
+      if(Math.abs(dx)<55||Math.abs(dy)>Math.abs(dx)*0.8||transitioning)return;
+      if(dx<0&&tabIdx<TABS.length-1)setTab(tabIdx+1);
+      else if(dx>0&&tabIdx>0)setTab(tabIdx-1);
+    },{passive:true});
+  }
 }
 
 // ── INIT ──
