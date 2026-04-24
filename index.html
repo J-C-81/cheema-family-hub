@@ -1,3 +1,64 @@
+<!--
+================================================================
+  CHEEMA FAMILY HUB — AI INSTRUCTIONS
+  READ THIS BEFORE MAKING ANY CHANGES
+================================================================
+
+  APP OVERVIEW:
+  - Single-file PWA (index.html) served via GitHub Pages
+  - Firebase Realtime DB: https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app
+  - Firebase endpoint: /cheema.json
+  - Push notifications via Cloudflare Worker: https://cfh-push.jivancheemalfc.workers.dev
+  - Repo: github.com/J-C-81/cheema-family-hub (branch: main)
+  - Live URL: https://j-c-81.github.io/cheema-family-hub
+
+  MEMBERS: Mum, Dad, Jiv, Rajan(Midget)
+  TABS: Shopping, To-Do, Messages
+  
+  KEY FUNCTIONS:
+  - renderContent()     — re-renders current tab
+  - renderTabs()        — re-renders tab bar
+  - setTab(i)           — switches to tab i with animation
+  - fbRead()            — reads all data from Firebase
+  - fbWrite(path, data) — writes to Firebase
+  - postNote()          — sends a message (keyboard stays up)
+  - bindSwipe(outer)    — attaches swipe-to-delete to an item
+  - initTabSwipe()      — sets up tab swipe gestures
+  - initPullRefresh()   — sets up pull-to-refresh
+  - openFilterSheet()   — opens filter/sort bottom sheet
+  - selectMember(name)  — logs in as a family member
+  - haptic(pattern)     — triggers haptic feedback
+  - delItem(id)         — deletes item from current tab
+  - checkVersionUpdate()— shows update toast if version changed
+
+  DARK MODE: :root.dark class on documentElement (NOT body)
+  THEME INIT: script in <head> before paint to avoid flash
+  SW PATH: /cheema-family-hub/sw.js
+
+  VERSION FORMAT — STRICTLY FOLLOW THIS:
+  vMAJOR.MEDIUM.SMALL
+  - MAJOR: huge app-changing redesign or structural overhaul
+  - MEDIUM: new features or significant behaviour changes
+  - SMALL: bug fixes, cosmetic tweaks, minor improvements
+
+  RULES FOR EVERY UPDATE:
+  1. Bump the version number in: const VER='vX.X.X';
+  2. Add an entry to the CHANGELOG below (newest at top)
+  3. Make surgical edits — do NOT rewrite the whole file
+  4. Tag every git push with the version: git tag vX.X.X
+  5. Commit message format: "vX.X.X: short description"
+  6. Never remove or rename key functions without updating
+     this comment block
+
+  CHANGELOG:
+  v4.2.1 - Restored Claude Code version: filter sheet, SVG icons,
+            light theme default, correct dark mode (:root.dark),
+            pull-to-refresh (900ms min), undo tick (4.5s toast),
+            unread dot on Messages, notice board, polls, item photos,
+            emoji reactions, offline mode, PWA manifest, sw.js,
+            keyboard stays up in Messages when sending
+================================================================
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
