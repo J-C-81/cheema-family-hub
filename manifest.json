@@ -1,13 +1,14 @@
 {
   "name": "Cheema Family Hub",
   "short_name": "Family Hub",
-  "start_url": "/",
+  "start_url": "/cheema-family-hub/",
+  "scope": "/cheema-family-hub/",
   "display": "standalone",
-  "background_color": "#0e1a2e",
-  "theme_color": "#0e1a2e",
+  "background_color": "#eef2ff",
+  "theme_color": "#eef2ff",
   "icons": [
-    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/cheema-family-hub/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/cheema-family-hub/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/cheema-family-hub/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }
