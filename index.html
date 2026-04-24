@@ -18,18 +18,20 @@
   KEY FUNCTIONS:
   - renderContent()     — re-renders current tab
   - renderTabs()        — re-renders tab bar
-  - setTab(i)           — switches to tab i with animation
+  - setTab(i)           — switches to tab i with real slide animation
   - fbRead()            — reads all data from Firebase
   - fbWrite(path, data) — writes to Firebase
   - postNote()          — sends a message (keyboard stays up)
-  - bindSwipe(outer)    — attaches swipe-to-delete to an item
-  - initTabSwipe()      — sets up tab swipe gestures
-  - initPullRefresh()   — sets up pull-to-refresh
+  - bindSwipe(outer)    — attaches swipe-to-delete (axis-locked)
+  - initTabSwipe()      — edge-aware tab swipe gestures
+  - initPullRefresh()   — sets up pull-to-refresh (1400ms min)
   - openFilterSheet()   — opens filter/sort bottom sheet
   - selectMember(name)  — logs in as a family member
   - haptic(pattern)     — triggers haptic feedback
   - delItem(id)         — deletes item from current tab
-  - checkVersionUpdate()— shows update toast if version changed
+  - checkVersionUpdate()— shows update popup if version changed
+  - showInstallPopup()  — first-open install-to-home-screen guide
+  - sendPushNotif(t,b,addedBy) — sends push, excludes sender's devices
 
   DARK MODE: :root.dark class on documentElement (NOT body)
   THEME INIT: script in <head> before paint to avoid flash
@@ -58,6 +60,20 @@
      this comment block
 
   CHANGELOG:
+  v4.3.0 - Real slide transition between tabs (cloned ghost pane),
+            longer pull-to-refresh (1400ms min) with smoother spring,
+            reworked swipe-to-delete: axis-lock so it no longer fights
+            vertical scroll, 35%-width threshold, rubber-band release,
+            edge-anchored tab swipes that reach the very screen edges,
+            multi-select filters (any combo of members + categories),
+            fixed "Reset to defaults" actually resets sort too,
+            update-detected popup on first open after version change,
+            install-to-home-screen popup for new visitors (iOS/Android
+            auto-detected), push notifications now exclude sender's own
+            registered devices via addedBy field (worker already
+            supported this; client was not sending it), batch-add
+            notification debounce extended to 8s so rapid adds group
+            into a single push, keyboard focus hardened in Messages.
   v4.2.1 - Restored Claude Code version: filter sheet, SVG icons,
             light theme default, correct dark mode (:root.dark),
             pull-to-refresh (900ms min), undo tick (4.5s toast),
@@ -157,7 +173,9 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .tab-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:4px;padding:6px 2px 10px;border:none;background:transparent;font-size:11.5px;font-weight:700;cursor:pointer;letter-spacing:-.1px;transition:color .2s var(--ease),background .2s;border-bottom:2.5px solid transparent;margin-bottom:-1.5px;white-space:nowrap;min-width:0}
 .tab-icn{display:inline-flex;align-items:center;line-height:1}
 .tab-cnt{font-size:9px;font-weight:700;border-radius:9px;padding:1px 5px;transition:all .2s;flex-shrink:0;min-width:16px;text-align:center}
-.content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;transition:opacity .2s var(--ease),transform .2s var(--ease)}
+.content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;position:relative;will-change:transform}
+.content-stage{position:relative;flex:1;overflow:hidden}
+.tab-ghost{position:absolute;inset:0;overflow:hidden;pointer-events:none;will-change:transform;background:var(--bg);z-index:5}
 .accent-strip{height:2px;transition:background .3s}
 .ptr{display:flex;align-items:center;justify-content:center;height:0;overflow:hidden;transition:height .2s;font-size:11px;color:var(--muted);font-weight:600;gap:6px}
 .ptr.show{height:44px}
@@ -305,6 +323,21 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .fdot{width:5px;height:5px;border-radius:50%;background:#22c55e;animation:blink 4s 2s infinite}
 .ftxt{font-size:10px;color:var(--muted);font-weight:500}
 .fver{font-size:10px;font-weight:700;color:var(--muted);background:var(--surf2);border:1px solid var(--brd);padding:2px 7px;border-radius:8px;margin-left:2px}
+.app-popup-back{position:fixed;inset:0;background:rgba(0,0,0,.52);z-index:700;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .22s var(--ease);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.app-popup-back.open{opacity:1;pointer-events:auto}
+.app-popup{background:var(--surf);border:1px solid var(--brd);border-radius:22px;box-shadow:var(--shadow-lg);padding:22px 22px 18px;max-width:320px;width:100%;transform:scale(.92) translateY(10px);transition:transform .28s var(--spring);text-align:center}
+.app-popup-back.open .app-popup{transform:scale(1) translateY(0)}
+.app-popup-ico{width:56px;height:56px;border-radius:18px;background:linear-gradient(145deg,#60a5fa,#818cf8);display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 14px;box-shadow:0 8px 28px rgba(96,165,250,.32)}
+.app-popup-title{font-size:17px;font-weight:800;letter-spacing:-.4px;margin-bottom:6px;color:var(--text)}
+.app-popup-sub{font-size:12px;color:var(--sub);font-weight:600;margin-bottom:12px;letter-spacing:.2px}
+.app-popup-body{font-size:13px;color:var(--sub);font-weight:500;line-height:1.55;margin-bottom:16px;text-align:left;background:var(--surf2);border:1px solid var(--brd);border-radius:12px;padding:11px 13px}
+.app-popup-body b{color:var(--text);font-weight:700}
+.app-popup-steps{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;text-align:left}
+.app-popup-step{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--text);font-weight:500;line-height:1.45}
+.app-popup-step-n{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:#60a5fa;color:white;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.app-popup-btn{width:100%;padding:12px;border:none;background:linear-gradient(145deg,#60a5fa,#818cf8);color:white;font-weight:700;font-size:14px;border-radius:12px;cursor:pointer;transition:transform .12s var(--ease),opacity .12s;letter-spacing:.2px}
+.app-popup-btn:active{transform:scale(.96);opacity:.9}
+.app-popup-dismiss{width:100%;padding:9px;margin-top:6px;background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer}
 </style>
 </head>
 <body>
@@ -349,7 +382,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.2.1';
+const VER='v4.3.0';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -360,7 +393,7 @@ const EMOJIS=['👍','❤️','😂','😮','😢'];
 const CATS=[{id:'produce',label:'Produce'},{id:'dairy',label:'Dairy'},{id:'bakery',label:'Bakery'},{id:'meat',label:'Meat'},{id:'tins',label:'Tins'},{id:'drinks',label:'Drinks'},{id:'house',label:'Household'},{id:'other',label:'Other'}];
 const CAT_HINTS={produce:['apple','banana','orange','carrot','tomato','lettuce','spinach','potato','onion','garlic','lemon','lime','pepper','mushroom','broccoli','cucumber','avocado','fruit','veg'],dairy:['milk','cheese','yogurt','butter','cream','egg','eggs'],bakery:['bread','roll','bagel','croissant','cake','biscuit','flour','yeast'],meat:['chicken','beef','lamb','pork','fish','salmon','tuna','mince','steak','sausage'],drinks:['water','juice','coke','pepsi','coffee','tea','beer','wine','drink'],house:['soap','shampoo','washing','bleach','toilet','tissue','sponge','cleaning','bin','bag'],tins:['tin','can','pasta','rice','sauce','soup','beans']};
 let state={shop:[],todo:[],notes:[],notices:[]};
-let member=null,tabIdx=0,shopSort='recency-desc',todoSort='urgency-desc',shopFilter='All',todoFilter='All',shopUrg=0,todoUrg=0,shopCat='',todoCat='';
+let member=null,tabIdx=0,shopSort='recency-desc',todoSort='urgency-desc',shopFilters=[],todoFilters=[],shopUrg=0,todoUrg=0,shopCats=[];
 let lastTs=0,isSaving=false,pollTimer=null,openPicker=null,transitioning=false,filterSheetOpen=false;
 let notifDismissed=false,swReg=null,shouldFocus=false,showNoticeCompose=false,showPollCompose=false,pollOpts=['',''],pollQ='';
 let undoTimer=null,lastReadNotes=0;
@@ -388,24 +421,160 @@ const VAPID_PUB='BHeqNiEDdtZG2JXW-xhJxz8ARfkIPkyfgfQjt5rjf5a4I0nQJZYRqkPGXs-MnDk
 function b64ToU8(b64){const p='='.repeat((4-b64.length%4)%4);const r=atob((b64+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)));}
 async function initSW(){if(!('serviceWorker' in navigator))return;try{swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});}catch(e){console.log('SW:',e);}}
 async function subscribePush(){if(!swReg||!('PushManager' in window))return false;try{const perm=await Notification.requestPermission();if(perm!=='granted')return false;let sub=await swReg.pushManager.getSubscription();if(!sub){await navigator.serviceWorker.ready;sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});}const key=sub.endpoint.split('/').pop().replace(/[^a-zA-Z0-9]/g,'').slice(-20)||'sub'+Date.now();await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...sub.toJSON(),member})});return true;}catch(e){return false;}}
-async function sendPushNotif(title,body){if(!PUSH_RELAY)return;try{fetch(PUSH_RELAY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body})});}catch(e){}}
+async function sendPushNotif(title,body,addedBy){if(!PUSH_RELAY)return;try{fetch(PUSH_RELAY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,addedBy})});}catch(e){}}
 let tgCfg=null,notifBatch=[],notifTimer2=null;
 async function loadTgCfg(){try{const r=await fetch('https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/tg_config.json');const d=await r.json();if(d&&d.token)tgCfg=d;}catch(e){}}
-function queueNotif(type,who,text){notifBatch.push({type,who,text});if(notifTimer2)clearTimeout(notifTimer2);notifTimer2=setTimeout(()=>{const b=[...notifBatch];notifBatch=[];if(!b.length)return;const groups={};for(const x of b){const k=x.type+'|'+x.who;(groups[k]=groups[k]||{type:x.type,who:x.who,items:[]}).items.push(x.text);}const gs=Object.values(groups);const section={shop:'Shopping',todo:'To-Do'},word={shop:'items',todo:'tasks'};let title,body;if(gs.length===1){const g=gs[0],n=g.items.length;if(g.type==='msg'){title=n===1?g.who:`${g.who} sent ${n} messages`;body=n===1?g.items[0]:'';}else{title=n===1?`${g.who} added to ${section[g.type]}`:`${g.who} added ${n} ${word[g.type]} to ${section[g.type]}`;body=n===1?g.items[0]:'';}}else{title='Family Hub';body=gs.map(g=>{const n=g.items.length;if(g.type==='msg')return n===1?`${g.who}: ${g.items[0]}`:`${g.who} sent ${n} messages`;return n===1?`${g.who} added to ${section[g.type]}: ${g.items[0]}`:`${g.who} added ${n} to ${section[g.type]}`;}).join(' · ');}sendPushNotif(title,body);},3000);}
+function queueNotif(type,who,text){notifBatch.push({type,who,text});if(notifTimer2)clearTimeout(notifTimer2);notifTimer2=setTimeout(()=>{const b=[...notifBatch];notifBatch=[];if(!b.length)return;const groups={};for(const x of b){const k=x.type+'|'+x.who;(groups[k]=groups[k]||{type:x.type,who:x.who,items:[]}).items.push(x.text);}const gs=Object.values(groups);const section={shop:'Shopping',todo:'To-Do'},word={shop:'items',todo:'tasks'};let title,body;if(gs.length===1){const g=gs[0],n=g.items.length;if(g.type==='msg'){title=n===1?g.who:`${g.who} sent ${n} messages`;body=n===1?g.items[0]:'';}else{title=n===1?`${g.who} added to ${section[g.type]}`:`${g.who} added ${n} ${word[g.type]} to ${section[g.type]}`;body=n===1?g.items[0]:'';}}else{title='Family Hub';body=gs.map(g=>{const n=g.items.length;if(g.type==='msg')return n===1?`${g.who}: ${g.items[0]}`:`${g.who} sent ${n} messages`;return n===1?`${g.who} added to ${section[g.type]}: ${g.items[0]}`:`${g.who} added ${n} to ${section[g.type]}`;}).join(' · ');}sendPushNotif(title,body,member);},8000);}
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
 function doLogout(){member=null;renderLogin();showScreen('login');}
 function renderLogin(){const g=document.getElementById('mgrid');g.innerHTML=MEMBERS.map(m=>`<button class="mbtn" id="mb${m.initials}" onclick="selectMember('${esc(m.name)}')"><div class="av" style="width:50px;height:50px;background:${m.color}18;border:2px solid ${m.color}55;font-size:20px;color:${m.color};border-radius:28%">${m.initials}</div><span class="mname" style="color:${m.color}">${esc(m.name)}</span></button>`).join('');MEMBERS.forEach(m=>{const b=document.getElementById('mb'+m.initials);if(!b)return;const on=()=>{b.style.borderColor=m.color;b.style.background=m.color+'10';b.style.boxShadow=`0 4px 20px ${m.color}22`;b.querySelector('.av').style.transform='scale(1.1)';};const off=()=>{b.style.borderColor='';b.style.background='';b.style.boxShadow='';b.querySelector('.av').style.transform='';};b.addEventListener('mouseenter',on);b.addEventListener('mouseleave',off);b.addEventListener('touchstart',on,{passive:true});b.addEventListener('touchend',()=>setTimeout(off,260));});}
 function selectMember(name){member=name;localStorage.setItem('cfh_member',name);const m=getMem(name);lastReadNotes=parseInt(localStorage.getItem('cfh_read_'+name)||'0');const ha=document.getElementById('hav'),hn=document.getElementById('hname'),hicon=document.getElementById('hicon');ha.style.cssText=`width:22px;height:22px;border-radius:7px;background:${m.color}20;border:1.5px solid ${m.color}55;font-size:9px;color:${m.color};font-weight:800`;ha.textContent=m.initials;hn.textContent=name;hicon.style.background=`linear-gradient(145deg,${m.color},${m.color}88)`;const card=document.querySelector('.login-card');if(card){card.style.transition='opacity .2s ease,transform .2s ease';card.style.opacity='0';card.style.transform='scale(.95) translateY(-10px)';}setTimeout(()=>{renderTabs();renderContent();showScreen('app');const c=document.getElementById('content');c.style.transition='none';c.style.opacity='0';c.style.transform='translateY(12px)';requestAnimationFrame(()=>requestAnimationFrame(()=>{c.style.transition='opacity .28s ease,transform .28s ease';c.style.opacity='1';c.style.transform='none';}));if(isStandalone()&&'Notification' in window&&Notification.permission==='default')setTimeout(()=>subscribePush().then(ok=>ok&&renderContent()),1500);},200);}
 function renderTabs(){const acc=TABS[tabIdx].accent;document.getElementById('mhdr').style.borderBottomColor=acc;const unread=state.notes.some(n=>n.ts>lastReadNotes&&n.author!==member);const sc=state.shop.filter(x=>!x.done).length,tc=state.todo.filter(x=>!x.done).length;let html=TABS.map((t,i)=>{const active=tabIdx===i,cnt=i===0?sc:i===1?tc:0,hasUnread=i===2&&unread&&tabIdx!==2;return`<button class="tab-btn" onclick="setTab(${i})" style="color:${active?t.accent:'var(--muted)'};border-bottom-color:${active?t.accent:'transparent'};${active?`background:${t.accent}0c`:''}"><span class="tab-icn">${t.icon}</span>${esc(t.label)}${cnt>0?`<span class="tab-cnt" style="background:${active?t.accent+'22':'var(--surf2)'};color:${active?t.accent:'var(--muted)'};border:1px solid ${active?t.accent+'44':'var(--brd)'}">${cnt}</span>`:''}${hasUnread?`<span style="width:7px;height:7px;background:#ef4444;border-radius:50%;display:inline-block;margin-left:1px;flex-shrink:0"></span>`:''}</button>`;}).join('');document.getElementById('tabs').innerHTML=html;const as=document.getElementById('acc-strip');if(as)as.style.background=acc;}
-async function setTab(i){if(transitioning||i===tabIdx)return;if(filterSheetOpen)closeFilterSheet();transitioning=true;const dir=i>tabIdx?1:-1;const c=document.getElementById('content');c.style.transition='opacity .18s ease,transform .18s ease';c.style.opacity='0';c.style.transform=`translateX(${dir*20}px)`;await sleep(185);tabIdx=i;if(i===2){lastReadNotes=Date.now();localStorage.setItem('cfh_read_'+member,lastReadNotes);}renderTabs();renderContent();c.style.transition='none';c.style.opacity='0';c.style.transform=`translateX(${-dir*20}px)`;c.offsetHeight;c.style.transition='opacity .24s ease,transform .24s ease';c.style.opacity='1';c.style.transform='none';setTimeout(()=>{transitioning=false;},260);}
+async function setTab(i){
+  if(transitioning||i===tabIdx)return;
+  if(filterSheetOpen)closeFilterSheet();
+  transitioning=true;
+  const dir=i>tabIdx?1:-1;
+  const c=document.getElementById('content');
+  // Snapshot current tab as a ghost pane
+  const ghost=document.createElement('div');
+  ghost.className='tab-ghost';
+  ghost.innerHTML=c.innerHTML;
+  // Match current scroll position so the ghost doesn't jump
+  ghost.scrollTop=c.scrollTop;
+  c.parentNode.insertBefore(ghost,c.nextSibling);
+  // Swap content
+  tabIdx=i;
+  if(i===2){lastReadNotes=Date.now();localStorage.setItem('cfh_read_'+member,lastReadNotes);}
+  renderTabs();
+  renderContent();
+  c.scrollTop=0;
+  // Prepare slide: new content starts offscreen, ghost starts in view
+  const SLIDE_EASE='cubic-bezier(.32,.72,.18,1)';
+  c.style.transition='none';
+  c.style.transform=`translate3d(${dir*100}%,0,0)`;
+  ghost.style.transform='translate3d(0,0,0)';
+  // Force reflow so the initial positions apply
+  void c.offsetHeight;
+  // Animate both in tandem
+  c.style.transition=`transform .34s ${SLIDE_EASE}`;
+  ghost.style.transition=`transform .34s ${SLIDE_EASE}`;
+  c.style.transform='translate3d(0,0,0)';
+  ghost.style.transform=`translate3d(${-dir*100}%,0,0)`;
+  setTimeout(()=>{
+    ghost.remove();
+    c.style.transition='';
+    c.style.transform='';
+    transitioning=false;
+  },360);
+}
 function setSort(v){if(tabIdx===0)shopSort=v;else todoSort=v;renderContent();if(filterSheetOpen)renderFilterSheetContent();}
 function notifBar(){if(notifDismissed||!('Notification' in window))return'';if(Notification.permission==='granted')return'';if(!isStandalone()&&isIOS())return`<div class="notif-bar"><span class="notif-bar-txt">Open from home screen icon to enable notifications</span><button class="notif-bar-dis" onclick="notifDismissed=true;renderContent()">✕</button></div>`;return`<div class="notif-bar"><span class="notif-bar-txt">Tap to get notifications</span><button class="notif-bar-act" onclick="doEnableNotifs()">Enable</button><button class="notif-bar-dis" onclick="notifDismissed=true;renderContent()">✕</button></div>`;}
 async function doEnableNotifs(){const ok=await subscribePush();notifDismissed=true;renderContent();if(ok&&swReg)swReg.showNotification('Notifications on',{body:"You'll get notified when the family adds something",icon:'/icon.png'});}
-function renderContent(){const c=document.getElementById('content'),acc=TABS[tabIdx].accent;if(tabIdx===2){c.innerHTML=buildMsgs();bindMsgEv();initTabSwipe();return;}const isS=tabIdx===0,list=isS?state.shop:state.todo;const sort=isS?shopSort:todoSort,filter=isS?shopFilter:todoFilter,urg=isS?shopUrg:todoUrg,cat=isS?shopCat:todoCat;let filtered=filter==='All'?list:list.filter(i=>i.addedBy===filter);if(cat)filtered=filtered.filter(i=>(i.cat||'')===(cat));const pending=sortList(filtered.filter(i=>!i.done),sort),done=sortList(filtered.filter(i=>i.done),sort);const notices=state.notices||[];const noticeHTML=notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notices</span></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:'';const urgBtns=URGENCY.map((u,i)=>`<button class="urg-btn" onclick="setUrg(${i})" style="border-color:${urg===i?u.color:'var(--brd)'};background:${urg===i?u.color+'18':'transparent'};color:${urg===i?u.color:'var(--muted)'}"><span class="udot" style="background:${urg===i?u.ring:'var(--brd)'}"></span>${u.label}</button>`).join('');const emptyIcon=isS?iconSvg('shop',24):iconSvg('todo',24);const pH=pending.length===0?`<div class="empty"><div class="empty-icon">${emptyIcon}</div><div class="empty-title">${list.length===0?(isS?'Shopping list is empty':'No tasks yet'):'All done'}</div>${list.length===0?'<div class="empty-sub">Tap above to add something</div>':''}</div>`:pending.map(it=>rItem(it,false)).join('');const dH=done.length===0?'':`<div class="done-sec"><div class="done-sep"></div><div class="done-hdr"><span class="done-ttl">Completed · ${done.length}</span><button class="clear-btn" onclick="clearDone()">Clear all</button></div>${done.map(it=>rItem(it,true)).join('')}</div>`;c.innerHTML=`${notifBar()}${noticeHTML}<div class="input-card"><div class="input-row"><input class="main-input" id="mi" placeholder="${isS?'Add to shopping…':'Add a task…'}" style="caret-color:${acc}" onkeydown="if(event.key==='Enter')addItem()"><button class="add-btn" onclick="addItem()" style="background:${acc}">Add</button></div><div class="urg-row"><span class="urg-lbl">Priority</span>${urgBtns}</div></div><div class="list-hdr"><span class="list-hdr-txt">${pending.length} remaining</span><button class="filter-trigger" onclick="openFilterSheet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>Filter &amp; Sort${hasActiveFilters()?'<span class="filter-dot"></span>':''}</button></div><div class="list-wrap">${pH}</div>${dH}<div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;if(shouldFocus){document.getElementById('mi')?.focus();shouldFocus=false;}document.querySelectorAll('.swipe-outer').forEach(bindSwipe);initTabSwipe();initPullRefresh();}
-function setCat(cid){if(tabIdx===0)shopCat=cid==='All'?'':cid;else todoCat=cid==='All'?'':cid;renderContent();if(filterSheetOpen)renderFilterSheetContent();}
+function renderContent(){const c=document.getElementById('content'),acc=TABS[tabIdx].accent;if(tabIdx===2){c.innerHTML=buildMsgs();bindMsgEv();initTabSwipe();return;}const isS=tabIdx===0,list=isS?state.shop:state.todo;const sort=isS?shopSort:todoSort,urg=isS?shopUrg:todoUrg;const filters=isS?shopFilters:todoFilters;let filtered=filters.length===0?list:list.filter(i=>filters.includes(i.addedBy));if(isS&&shopCats.length)filtered=filtered.filter(i=>shopCats.includes(i.cat||''));const pending=sortList(filtered.filter(i=>!i.done),sort),done=sortList(filtered.filter(i=>i.done),sort);const notices=state.notices||[];const noticeHTML=notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notices</span></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:'';const urgBtns=URGENCY.map((u,i)=>`<button class="urg-btn" onclick="setUrg(${i})" style="border-color:${urg===i?u.color:'var(--brd)'};background:${urg===i?u.color+'18':'transparent'};color:${urg===i?u.color:'var(--muted)'}"><span class="udot" style="background:${urg===i?u.ring:'var(--brd)'}"></span>${u.label}</button>`).join('');const emptyIcon=isS?iconSvg('shop',24):iconSvg('todo',24);const pH=pending.length===0?`<div class="empty"><div class="empty-icon">${emptyIcon}</div><div class="empty-title">${list.length===0?(isS?'Shopping list is empty':'No tasks yet'):'All done'}</div>${list.length===0?'<div class="empty-sub">Tap above to add something</div>':''}</div>`:pending.map(it=>rItem(it,false)).join('');const dH=done.length===0?'':`<div class="done-sec"><div class="done-sep"></div><div class="done-hdr"><span class="done-ttl">Completed · ${done.length}</span><button class="clear-btn" onclick="clearDone()">Clear all</button></div>${done.map(it=>rItem(it,true)).join('')}</div>`;c.innerHTML=`${notifBar()}${noticeHTML}<div class="input-card"><div class="input-row"><input class="main-input" id="mi" placeholder="${isS?'Add to shopping…':'Add a task…'}" style="caret-color:${acc}" onkeydown="if(event.key==='Enter')addItem()"><button class="add-btn" onclick="addItem()" style="background:${acc}">Add</button></div><div class="urg-row"><span class="urg-lbl">Priority</span>${urgBtns}</div></div><div class="list-hdr"><span class="list-hdr-txt">${pending.length} remaining</span><button class="filter-trigger" onclick="openFilterSheet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>Filter &amp; Sort${hasActiveFilters()?'<span class="filter-dot"></span>':''}</button></div><div class="list-wrap">${pH}</div>${dH}<div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;if(shouldFocus){document.getElementById('mi')?.focus();shouldFocus=false;}document.querySelectorAll('.swipe-outer').forEach(bindSwipe);initTabSwipe();initPullRefresh();}
+function setCat(cid){if(tabIdx!==0)return;if(cid==='All'){shopCats=[];}else{const i=shopCats.indexOf(cid);if(i>=0)shopCats.splice(i,1);else shopCats.push(cid);}renderContent();if(filterSheetOpen)renderFilterSheetContent();}
 function rItem(it,isDone){const m=getMem(it.addedBy),u=it.urgency!=null?URGENCY[it.urgency]:URGENCY[0];const ci=CATS.find(c=>c.id===it.cat);const ub=`<span class="iurg" onclick="cycleUrg(event,'${it.id}')" style="color:${u.color}"><span class="udot" style="background:${u.ring};margin-right:2px"></span>${u.label}</span>`;const catTag=ci&&!isDone?`<span class="icat">${iconSvg('tag',10)}${ci.label}</span>`:'';const chk=`border-color:${m.color}55${isDone?`;background:${m.color}22;color:${m.color}`:''}`;const bord=isDone?`${u.color}44`:u.color;const photoEl=it.photo?`<img class="item-photo" src="${it.photo}" onclick="viewPhoto('${it.photo}')">`:(isDone?'':`<button class="photo-btn" onclick="addPhoto('${it.id}')" title="Add photo">${iconSvg('camera',14)}</button>`);return`<div class="swipe-outer"><div class="swipe-wrap" data-id="${it.id}"><span class="swipe-hint">✕ Delete</span><div class="item${isDone?' done':''}" style="border-left-color:${bord}"><button class="ichk" style="${chk}" onclick="toggleItem('${it.id}')">${isDone?'✓':''}</button><div class="ibody"><div class="itext${isDone?' struck':''}">${esc(it.text)}</div><div class="imeta"><span class="iname" style="color:${m.color}">${esc(it.addedBy)}</span>${ub}<span class="itime">${isDone?`by ${esc(it.doneBy||'?')}`:timeAgo(it.ts)}</span>${catTag}</div></div>${photoEl}<button class="del-btn" onclick="delItem('${it.id}')">×</button></div></div></div>`;}
-function bindSwipe(outer){const wrap=outer.querySelector('.swipe-wrap'),item=outer.querySelector('.item');if(!wrap||!item)return;let sx=0,cx=0,going=false,gone=false;item.addEventListener('touchstart',e=>{if(gone)return;sx=e.touches[0].clientX;cx=0;going=true;item.style.transition='none';wrap.classList.add('swiping');},{passive:true});item.addEventListener('touchmove',e=>{if(!going||gone)return;const dx=e.touches[0].clientX-sx;if(dx>=0){cx=0;item.style.transform='';return;}cx=Math.max(dx,-item.offsetWidth);item.style.transform=`translateX(${cx}px)`;},{passive:true});item.addEventListener('touchend',()=>{if(!going||gone)return;going=false;if(cx>=-140)wrap.classList.remove('swiping');if(cx<-140){gone=true;haptic([8,30,12]);item.style.transition='transform .18s ease,opacity .14s ease';item.style.transform=`translateX(-${item.offsetWidth+10}px)`;item.style.opacity='0';outer.style.transition='max-height .22s ease,opacity .18s ease,margin .22s ease';outer.style.overflow='hidden';setTimeout(()=>{outer.style.maxHeight=outer.offsetHeight+'px';requestAnimationFrame(()=>{outer.style.maxHeight='0';outer.style.opacity='0';outer.style.marginBottom='0';});setTimeout(()=>delItem(wrap.dataset.id),240);},180);}else{item.style.transition='transform .2s cubic-bezier(.4,0,.2,1)';item.style.transform='';cx=0;}});}
-function initPullRefresh(){const c=document.getElementById('content'),ptr=document.getElementById('ptr');if(!c||!ptr||c._ptr)return;c._ptr=true;let sy=0,pulling=false,triggered=false,refreshing=false;c.addEventListener('touchstart',e=>{if(c.scrollTop!==0||refreshing)return;sy=e.touches[0].clientY;pulling=true;triggered=false;},{passive:true});c.addEventListener('touchmove',e=>{if(!pulling)return;const dy=e.touches[0].clientY-sy;if(dy<=0||c.scrollTop>0){ptr.classList.remove('show');triggered=false;return;}const pull=Math.min(dy*0.45,80);c.style.transition='none';c.style.transform=`translate3d(0,${pull}px,0)`;if(pull>=40){ptr.classList.add('show');if(pull>=58&&!triggered){triggered=true;haptic(14);}}else{ptr.classList.remove('show');triggered=false;}},{passive:true});c.addEventListener('touchend',async()=>{if(!pulling)return;pulling=false;c.style.transition='transform .32s cubic-bezier(.4,0,.2,1)';c.style.transform='translate3d(0,0,0)';if(!triggered){setTimeout(()=>{c.style.transition='';c.style.transform='';},340);ptr.classList.remove('show');return;}refreshing=true;ptr.classList.add('show');const t0=Date.now();try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices};lastTs=d.updatedAt;cacheState();setOffline(false);}catch(e2){}const elapsed=Date.now()-t0;if(elapsed<900)await sleep(900-elapsed);ptr.classList.remove('show');setTimeout(()=>{c.style.transition='';c.style.transform='';},340);refreshing=false;renderContent();renderTabs();},{passive:true});}
+function bindSwipe(outer){
+  const wrap=outer.querySelector('.swipe-wrap'),item=outer.querySelector('.item');
+  if(!wrap||!item)return;
+  let sx=0,sy=0,cx=0,locked=null,going=false,gone=false;
+  const LOCK_PX=8;
+  item.addEventListener('touchstart',e=>{
+    if(gone)return;
+    sx=e.touches[0].clientX;sy=e.touches[0].clientY;
+    cx=0;locked=null;going=true;
+    item.style.transition='none';
+  },{passive:true});
+  item.addEventListener('touchmove',e=>{
+    if(!going||gone)return;
+    const dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
+    if(locked===null){
+      if(Math.abs(dx)<LOCK_PX&&Math.abs(dy)<LOCK_PX)return;
+      locked=(Math.abs(dx)>Math.abs(dy)*1.3)?'x':'y';
+      if(locked==='y'){going=false;wrap.classList.remove('swiping');return;}
+    }
+    if(locked!=='x')return;
+    if(dx>=0){cx=0;item.style.transform='translate3d(0,0,0)';wrap.classList.remove('swiping');return;}
+    cx=Math.max(dx,-item.offsetWidth*0.9);
+    item.style.transform=`translate3d(${cx}px,0,0)`;
+    if(cx<-26)wrap.classList.add('swiping');
+    else wrap.classList.remove('swiping');
+  },{passive:true});
+  const release=()=>{
+    if(!going||gone)return;
+    going=false;
+    const threshold=-item.offsetWidth*0.35;
+    if(cx<=threshold){
+      gone=true;haptic([8,30,12]);
+      item.style.transition='transform .22s cubic-bezier(.32,.72,.18,1),opacity .18s ease';
+      item.style.transform=`translate3d(-${item.offsetWidth+20}px,0,0)`;
+      item.style.opacity='0';
+      outer.style.transition='max-height .26s ease,opacity .22s ease,margin .26s ease';
+      outer.style.overflow='hidden';
+      setTimeout(()=>{
+        outer.style.maxHeight=outer.offsetHeight+'px';
+        requestAnimationFrame(()=>{outer.style.maxHeight='0';outer.style.opacity='0';outer.style.marginBottom='0';});
+        setTimeout(()=>delItem(wrap.dataset.id),260);
+      },220);
+    }else{
+      item.style.transition='transform .28s cubic-bezier(.32,.72,.18,1)';
+      item.style.transform='translate3d(0,0,0)';
+      wrap.classList.remove('swiping');
+      cx=0;
+    }
+  };
+  item.addEventListener('touchend',release);
+  item.addEventListener('touchcancel',release);
+}
+function initPullRefresh(){
+  const c=document.getElementById('content'),ptr=document.getElementById('ptr');
+  if(!c||!ptr||c._ptr)return;
+  c._ptr=true;
+  let sy=0,pulling=false,triggered=false,refreshing=false;
+  c.addEventListener('touchstart',e=>{
+    if(c.scrollTop!==0||refreshing)return;
+    sy=e.touches[0].clientY;pulling=true;triggered=false;
+  },{passive:true});
+  c.addEventListener('touchmove',e=>{
+    if(!pulling)return;
+    const dy=e.touches[0].clientY-sy;
+    if(dy<=0||c.scrollTop>0){ptr.classList.remove('show');triggered=false;return;}
+    const pull=Math.min(dy*0.5,90);
+    c.style.transition='none';
+    c.style.transform=`translate3d(0,${pull}px,0)`;
+    if(pull>=44){ptr.classList.add('show');if(pull>=62&&!triggered){triggered=true;haptic(14);}}
+    else{ptr.classList.remove('show');triggered=false;}
+  },{passive:true});
+  c.addEventListener('touchend',async()=>{
+    if(!pulling)return;
+    pulling=false;
+    const RELEASE_EASE='cubic-bezier(.32,.72,.18,1)';
+    if(!triggered){
+      c.style.transition=`transform .36s ${RELEASE_EASE}`;
+      c.style.transform='translate3d(0,0,0)';
+      setTimeout(()=>{c.style.transition='';c.style.transform='';},380);
+      ptr.classList.remove('show');
+      return;
+    }
+    refreshing=true;ptr.classList.add('show');
+    // Hold the content down a touch while refreshing for a satisfying bounce
+    c.style.transition=`transform .25s ${RELEASE_EASE}`;
+    c.style.transform='translate3d(0,52px,0)';
+    const t0=Date.now();
+    try{
+      const d=await fbRead();
+      state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices};
+      lastTs=d.updatedAt;cacheState();setOffline(false);
+    }catch(e2){}
+    const elapsed=Date.now()-t0;
+    const MIN_REFRESH=1400;
+    if(elapsed<MIN_REFRESH)await sleep(MIN_REFRESH-elapsed);
+    renderContent();renderTabs();
+    c.style.transition=`transform .4s ${RELEASE_EASE}`;
+    c.style.transform='translate3d(0,0,0)';
+    setTimeout(()=>{ptr.classList.remove('show');c.style.transition='';c.style.transform='';refreshing=false;},420);
+  },{passive:true});
+}
 function buildMsgs(){const acc=TABS[2].accent,me=getMem(member);const notices=state.notices||[];const noticeBlock=!notices.length&&!showNoticeCompose?'':(notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span><button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span>${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}</div>${showNoticeCompose?noticeCompose():''}</div>`);const feed=state.notes.length===0?`<div class="empty"><div class="empty-icon">${iconSvg('notes',24)}</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`:[...state.notes].sort((a,b)=>((b.type==='poll'&&b.pinned)?1:0)-((a.type==='poll'&&a.pinned)?1:0)).map(n=>{const auth=getMem(n.author),isMe=n.author===member;if(n.type==='poll')return renderPollBubble(n,auth,isMe);const rx=n.reactions||{};const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');return`<div class="nwrap ${isMe?'mine':'theirs'}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div><div class="nbubble ${isMe?'mine':'theirs'}" style="background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}"><div class="ntext">${esc(n.text)}</div></div><div class="rbar" id="rb${n.id}">${rxH}<button class="radd" onclick="showPicker(event,'${n.id}')">+</button></div>${isMe?`<button class="ndel" onclick="delNote('${n.id}')">Delete</button>`:''}</div>`;}).join('');const composeSection=showNoticeCompose&&!notices.length?'':`<div class="msg-compose" style="border-top-color:${acc}"><textarea class="msg-ta" id="ni" placeholder="Message the family…" style="caret-color:${acc}"></textarea><div class="msg-ft"><div class="msg-as"><div class="av" style="width:20px;height:20px;font-size:8px;color:${me.color};background:${me.color}18;border:1.5px solid ${me.color}44;border-radius:28%;flex-shrink:0">${me.initials}</div><span>as</span><b style="color:${me.color};margin-left:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(member)}</b></div><div class="msg-actions"><button class="msg-tool-btn" onclick="showPollCompose=!showPollCompose;renderContent()" title="Create poll">${iconSvg('poll',14)}</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div></div></div>${showPollCompose?buildPollCompose():''}`;return`${notifBar()}${noticeBlock}${composeSection}<div class="msg-feed">${feed}</div><div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;}
 function bindMsgEv(){const b=document.getElementById('pb'),i=document.getElementById('ni');if(b)b.onclick=postNote;if(i)i.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();postNote();}});initTabSwipe();initPullRefresh();}
 function noticeCompose(){return`<div class="notice-compose"><textarea id="notice-ta" placeholder="Write a notice…" rows="2" style="caret-color:#f59e0b"></textarea><div class="notice-compose-ft"><button onclick="showNoticeCompose=false;renderContent()" style="background:var(--surf2);border:1px solid var(--brd);color:var(--sub)">Cancel</button><button onclick="postNotice()" style="background:#f59e0b;color:white;border:none">${iconSvg('pin',12)} Pin it</button></div></div>`;}
@@ -422,26 +591,98 @@ function toggleRx(nid,emoji){closePicker();haptic(8);state.notes=state.notes.map
 function showUndoToast(msg,onUndo){document.querySelector('.undo-toast')?.remove();const t=document.createElement('div');t.className='undo-toast';t.innerHTML=`<span class="undo-txt">${msg}</span><button class="undo-btn" onclick="this.closest('.undo-toast')._undo()">Undo</button>`;t._undo=()=>{clearTimeout(undoTimer);t.remove();onUndo();};document.body.appendChild(t);undoTimer=setTimeout(()=>t.remove(),4500);}
 function addPhoto(itemId){const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.capture='environment';inp.onchange=e=>{const file=e.target.files[0];if(!file)return;const canvas=document.createElement('canvas'),img=new Image();img.onload=()=>{const MAX=320,ratio=Math.min(MAX/img.width,MAX/img.height,1);canvas.width=img.width*ratio;canvas.height=img.height*ratio;canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);const b64=canvas.toDataURL('image/jpeg',0.75);const k=tabIdx===0?'shop':'todo';state[k]=state[k].map(i=>i.id===itemId?{...i,photo:b64}:i);renderContent();save();};img.src=URL.createObjectURL(file);};inp.click();}
 function viewPhoto(b64){const m=document.createElement('div');m.className='photo-modal';m.innerHTML=`<img src="${b64}"><button class="photo-modal-close" onclick="this.parentElement.remove()">✕</button>`;m.onclick=e=>{if(e.target===m)m.remove();};document.body.appendChild(m);}
-function addItem(){const inp=document.getElementById('mi'),text=inp?.value.trim();if(!text)return;const isS=tabIdx===0,urg=isS?shopUrg:todoUrg,cat=isS?shopCat:todoCat,autoCat=cat||(isS?suggestCat(text):'');const it={id:genId(),text,urgency:urg,cat:autoCat,addedBy:member,done:false,ts:Date.now()};if(isS)state.shop=[it,...state.shop];else state.todo=[it,...state.todo];if(isS){shopUrg=0;shopCat='';}else{todoUrg=0;todoCat='';}inp.value='';shouldFocus=true;haptic(8);renderTabs();renderContent();save();queueNotif(isS?'shop':'todo',member,text);}
+function addItem(){const inp=document.getElementById('mi'),text=inp?.value.trim();if(!text)return;const isS=tabIdx===0,urg=isS?shopUrg:todoUrg,autoCat=isS?suggestCat(text):'';const it={id:genId(),text,urgency:urg,cat:autoCat,addedBy:member,done:false,ts:Date.now()};if(isS)state.shop=[it,...state.shop];else state.todo=[it,...state.todo];if(isS){shopUrg=0;}else{todoUrg=0;}inp.value='';shouldFocus=true;haptic(8);renderTabs();renderContent();save();queueNotif(isS?'shop':'todo',member,text);}
 function setUrg(i){const inp=document.getElementById('mi'),saved=inp?inp.value:'';if(tabIdx===0)shopUrg=i;else todoUrg=i;renderContent();const mi=document.getElementById('mi');if(mi&&saved){mi.value=saved;mi.focus();}}
 function cycleUrg(e,id){e.stopPropagation();haptic(8);const k=tabIdx===0?'shop':'todo';state[k]=state[k].map(i=>i.id!==id?i:{...i,urgency:((i.urgency??0)+1)%3});renderContent();save();}
 function toggleItem(id){haptic([8,20,8]);const k=tabIdx===0?'shop':'todo';const it=state[k].find(i=>i.id===id);if(!it)return;const nowDone=!it.done;state[k]=state[k].map(i=>i.id===id?{...i,done:nowDone,doneBy:nowDone?member:undefined}:i);if(nowDone){showUndoToast(`Ticked off "${it.text.slice(0,28)}"`,()=>{state[k]=state[k].map(i=>i.id===id?{...i,done:false,doneBy:undefined}:i);renderTabs();renderContent();save();});}renderTabs();renderContent();save();}
 function delItem(id){const k=tabIdx===0?'shop':'todo';state[k]=state[k].filter(i=>i.id!==id);renderTabs();renderContent();save();}
 function clearDone(){const k=tabIdx===0?'shop':'todo';state[k]=state[k].filter(i=>!i.done);renderTabs();renderContent();save();}
-function postNote(){const inp=document.getElementById('ni'),text=inp?.value.trim();if(!text)return;const note={id:genId(),text,author:member,ts:Date.now(),reactions:{}};state.notes=[note,...state.notes];inp.value='';haptic(8);const feed=document.querySelector('.msg-feed');if(feed){const auth=getMem(member);const div=document.createElement('div');div.className='nwrap mine';div.style.cssText='animation:itemIn .2s var(--ease) both';div.innerHTML=`<div class="nhdr" style="flex-direction:row-reverse"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(member)}</span><span class="ntime">just now</span></div><div class="nbubble mine" style="background:${auth.color}18;border-color:${auth.color}44"><div class="ntext">${esc(text)}</div></div><div class="rbar" id="rb${note.id}"><button class="radd" onclick="showPicker(event,'${note.id}')">+</button></div><button class="ndel" onclick="delNote('${note.id}')">Delete</button>`;feed.insertBefore(div,feed.firstChild);feed.querySelector('.empty')?.remove();}inp.focus();save();queueNotif('msg',member,text);renderTabs();}
+function postNote(){const inp=document.getElementById('ni');const text=inp?.value.trim();if(!text||!inp)return;inp.value='';inp.focus();const note={id:genId(),text,author:member,ts:Date.now(),reactions:{}};state.notes=[note,...state.notes];haptic(8);const feed=document.querySelector('.msg-feed');if(feed){const auth=getMem(member);const div=document.createElement('div');div.className='nwrap mine';div.style.cssText='animation:itemIn .2s var(--ease) both';div.innerHTML=`<div class="nhdr" style="flex-direction:row-reverse"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(member)}</span><span class="ntime">just now</span></div><div class="nbubble mine" style="background:${auth.color}18;border-color:${auth.color}44"><div class="ntext">${esc(text)}</div></div><div class="rbar" id="rb${note.id}"><button class="radd" onclick="showPicker(event,'${note.id}')">+</button></div><button class="ndel" onclick="delNote('${note.id}')">Delete</button>`;feed.insertBefore(div,feed.firstChild);feed.querySelector('.empty')?.remove();}requestAnimationFrame(()=>{const again=document.getElementById('ni');if(again)again.focus();});save();queueNotif('msg',member,text);renderTabs();}
 function delNote(id){state.notes=state.notes.filter(n=>n.id!==id);renderContent();save();}
-function setFilter(n){if(tabIdx===0)shopFilter=n;else todoFilter=n;renderContent();if(filterSheetOpen)renderFilterSheetContent();}
-function hasActiveFilters(){if(tabIdx===0)return shopFilter!=='All'||!!shopCat||shopSort!=='recency-desc';if(tabIdx===1)return todoFilter!=='All'||todoSort!=='urgency-desc';return false;}
+function setFilter(n){const arr=tabIdx===0?shopFilters:todoFilters;if(n==='All'){arr.length=0;}else{const i=arr.indexOf(n);if(i>=0)arr.splice(i,1);else arr.push(n);}renderContent();if(filterSheetOpen)renderFilterSheetContent();}
+function hasActiveFilters(){if(tabIdx===0)return shopFilters.length>0||shopCats.length>0||shopSort!=='recency-desc';if(tabIdx===1)return todoFilters.length>0||todoSort!=='urgency-desc';return false;}
 function openFilterSheet(){filterSheetOpen=true;renderFilterSheetContent();document.getElementById('fsheet').classList.add('open');document.getElementById('fsheet-back').classList.add('open');}
 function closeFilterSheet(){filterSheetOpen=false;document.getElementById('fsheet').classList.remove('open');document.getElementById('fsheet-back').classList.remove('open');}
-function clearFilters(){if(tabIdx===0){shopFilter='All';shopCat='';shopSort='recency-desc';}else if(tabIdx===1){todoFilter='All';todoSort='urgency-desc';}renderContent();renderFilterSheetContent();}
-function renderFilterSheetContent(){const sheet=document.getElementById('fsheet');if(!sheet)return;if(tabIdx>=2){sheet.innerHTML='';return;}const isS=tabIdx===0,filter=isS?shopFilter:todoFilter,cat=isS?shopCat:'',sort=isS?shopSort:todoSort,acc=TABS[tabIdx].accent;const pills=['All',...MEMBERS.map(x=>x.name)].map(n=>{const mx=n==='All'?null:getMem(n),active=filter===n,col=mx?mx.color:acc;return`<button class="f-btn" onclick="setFilter('${n}')" style="border-color:${active?col:'var(--brd)'};background:${active?col+'18':'transparent'};color:${active?col:'var(--muted)'}">${mx?`<div class="av" style="width:12px;height:12px;font-size:5.5px;color:${mx.color};background:${mx.color}18;border:1px solid ${mx.color}44;border-radius:30%">${mx.initials}</div>`:''}${esc(n)}</button>`;}).join('');const catPills=isS?['All',...CATS.map(c=>c.id)].map(cid=>{const ci=CATS.find(c=>c.id===cid),active=(cat||'All')===cid||(!cat&&cid==='All');return`<button class="f-btn" onclick="setCat('${cid}')" style="border-color:${active?acc:'var(--brd)'};background:${active?acc+'18':'transparent'};color:${active?acc:'var(--muted)'}">${cid==='All'?'All':ci.label}</button>`;}).join(''):'';sheet.innerHTML=`<div class="fsheet-grip"></div><div class="fsheet-hdr"><div class="fsheet-title">Filter &amp; Sort</div><button class="fsheet-done" onclick="closeFilterSheet()">Done</button></div><div class="fsheet-sec"><div class="fsheet-lbl">Sort by</div><select class="sort-sel" style="color:${acc};border-color:${acc}44" onchange="setSort(this.value)">${SORTS.map(o=>`<option value="${o.key}"${sort===o.key?' selected':''}>${o.label}</option>`).join('')}</select></div><div class="fsheet-sec"><div class="fsheet-lbl">Show items from</div><div class="fsheet-pills">${pills}</div></div>${isS?`<div class="fsheet-sec"><div class="fsheet-lbl">Category</div><div class="fsheet-pills">${catPills}</div></div>`:''}${hasActiveFilters()?`<button class="fsheet-clear" onclick="clearFilters()">Reset to defaults</button>`:''}`;}
+function clearFilters(){if(tabIdx===0){shopFilters.length=0;shopCats.length=0;shopSort='recency-desc';}else if(tabIdx===1){todoFilters.length=0;todoSort='urgency-desc';}renderContent();renderFilterSheetContent();}
+function renderFilterSheetContent(){const sheet=document.getElementById('fsheet');if(!sheet)return;if(tabIdx>=2){sheet.innerHTML='';return;}const isS=tabIdx===0,filters=isS?shopFilters:todoFilters,sort=isS?shopSort:todoSort,acc=TABS[tabIdx].accent;const pills=['All',...MEMBERS.map(x=>x.name)].map(n=>{const mx=n==='All'?null:getMem(n),active=n==='All'?filters.length===0:filters.includes(n),col=mx?mx.color:acc;return`<button class="f-btn" onclick="setFilter('${n}')" style="border-color:${active?col:'var(--brd)'};background:${active?col+'18':'transparent'};color:${active?col:'var(--muted)'}">${mx?`<div class="av" style="width:12px;height:12px;font-size:5.5px;color:${mx.color};background:${mx.color}18;border:1px solid ${mx.color}44;border-radius:30%">${mx.initials}</div>`:''}${esc(n)}</button>`;}).join('');const catPills=isS?['All',...CATS.map(c=>c.id)].map(cid=>{const ci=CATS.find(c=>c.id===cid),active=cid==='All'?shopCats.length===0:shopCats.includes(cid);return`<button class="f-btn" onclick="setCat('${cid}')" style="border-color:${active?acc:'var(--brd)'};background:${active?acc+'18':'transparent'};color:${active?acc:'var(--muted)'}">${cid==='All'?'All':ci.label}</button>`;}).join(''):'';sheet.innerHTML=`<div class="fsheet-grip"></div><div class="fsheet-hdr"><div class="fsheet-title">Filter &amp; Sort</div><button class="fsheet-done" onclick="closeFilterSheet()">Done</button></div><div class="fsheet-sec"><div class="fsheet-lbl">Sort by</div><select class="sort-sel" style="color:${acc};border-color:${acc}44" onchange="setSort(this.value)">${SORTS.map(o=>`<option value="${o.key}"${sort===o.key?' selected':''}>${o.label}</option>`).join('')}</select></div><div class="fsheet-sec"><div class="fsheet-lbl">Show items from</div><div class="fsheet-pills">${pills}</div></div>${isS?`<div class="fsheet-sec"><div class="fsheet-lbl">Category</div><div class="fsheet-pills">${catPills}</div></div>`:''}${hasActiveFilters()?`<button class="fsheet-clear" onclick="clearFilters()">Reset to defaults</button>`:''}`;}
 function isStandalone(){return window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;}
 function isIOS(){return /iP(hone|ad|od)/.test(navigator.userAgent);}
 function renderInstallBanner(){}
+function checkVersionUpdate(){
+  const last=localStorage.getItem('cfh-last-ver');
+  if(last!==VER){
+    localStorage.setItem('cfh-last-ver',VER);
+    if(last){setTimeout(showUpdatePopup,900);}
+  }
+}
+function showUpdatePopup(){
+  if(document.querySelector('.app-popup-back'))return;
+  const notes=`<b>What's new in ${VER}:</b><br>• Real slide between tabs<br>• Smoother pull-to-refresh<br>• Reworked swipe-to-delete<br>• Multi-select filters<br>• Edge-aware tab swipes<br>• No more self-notifications`;
+  const back=document.createElement('div');
+  back.className='app-popup-back';
+  back.innerHTML=`<div class="app-popup"><div class="app-popup-ico">✨</div><div class="app-popup-title">Updated</div><div class="app-popup-sub">Now on ${VER}</div><div class="app-popup-body">${notes}</div><button class="app-popup-btn" onclick="this.closest('.app-popup-back').remove()">Got it</button></div>`;
+  document.body.appendChild(back);
+  requestAnimationFrame(()=>back.classList.add('open'));
+}
+function checkInstallPrompt(){
+  if(isStandalone())return;
+  if(localStorage.getItem('cfh-install-seen'))return;
+  localStorage.setItem('cfh-install-seen','1');
+  setTimeout(showInstallPopup,2200);
+}
+function showInstallPopup(){
+  if(document.querySelector('.app-popup-back'))return;
+  const ios=isIOS();
+  const steps=ios
+    ?[['1','Tap the <b>Share</b> button at the bottom of Safari'],['2','Scroll down and tap <b>Add to Home Screen</b>'],['3','Tap <b>Add</b> — the app will appear on your home screen']]
+    :[['1','Tap the menu (<b>⋮</b>) in Chrome'],['2','Tap <b>Install app</b> or <b>Add to Home screen</b>'],['3','Open it from your home screen like any app']];
+  const stepsHTML=steps.map(s=>`<div class="app-popup-step"><div class="app-popup-step-n">${s[0]}</div><div>${s[1]}</div></div>`).join('');
+  const back=document.createElement('div');
+  back.className='app-popup-back';
+  back.innerHTML=`<div class="app-popup"><div class="app-popup-ico">📱</div><div class="app-popup-title">Install as an app</div><div class="app-popup-sub">${ios?'iOS / Safari':'Android / Chrome'}</div><div class="app-popup-steps">${stepsHTML}</div><button class="app-popup-btn" onclick="this.closest('.app-popup-back').remove()">Got it</button><button class="app-popup-dismiss" onclick="this.closest('.app-popup-back').remove()">Maybe later</button></div>`;
+  document.body.appendChild(back);
+  requestAnimationFrame(()=>back.classList.add('open'));
+}
 async function initPush(){if(!('serviceWorker' in navigator)||!('PushManager' in window))return;try{if(!swReg)swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});await navigator.serviceWorker.ready;const existing=await swReg.pushManager.getSubscription();if(existing&&Notification.permission==='granted'){const key=existing.endpoint.split('/').pop().replace(/[^a-zA-Z0-9]/g,'').slice(-20)||'sub'+Date.now();await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...existing.toJSON(),member})});}}catch(e){}}
-function initTabSwipe(){const content=document.getElementById('content');if(!content||content._tsb)return;content._tsb=true;let sx=0,sy=0,active=false,decided=false;content.addEventListener('touchstart',e=>{active=false;decided=false;if(e.target.closest('.swipe-outer,.item,.swipe-wrap,.filter-row,.urg-row,.cat-row,.poll-option,.input-card'))return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;active=true;},{passive:true});content.addEventListener('touchmove',e=>{if(!active)return;const dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;if(!decided&&(Math.abs(dx)>8||Math.abs(dy)>8)){decided=true;if(Math.abs(dy)>Math.abs(dx)*.8)active=false;}},{passive:true});content.addEventListener('touchend',e=>{if(!active)return;active=false;const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;if(Math.abs(dx)<65||Math.abs(dy)>Math.abs(dx)*.6||transitioning)return;if(dx<0&&tabIdx<TABS.length-1)setTab(tabIdx+1);else if(dx>0&&tabIdx>0)setTab(tabIdx-1);},{passive:true});}
-async function init(){try{initTheme();}catch(e){}showScreen('loading');const cache=loadCache();if(cache){state=cache.state;}try{await initSW();}catch(e){}try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices};lastTs=d.updatedAt;cacheState();setStatus('live');setOffline(false);}catch(e){if(!cache){setStatus('error');renderLogin();showScreen('login');return;}setStatus('offline');setOffline(true);}try{renderLogin();const saved=localStorage.getItem('cfh_member');const ok=saved&&MEMBERS.find(m=>m.name===saved);if(ok){selectMember(saved);}else{showScreen('login');}startPoll();}catch(e){showScreen('login');}try{loadTgCfg();}catch(e){}try{initPush();}catch(e){}window.addEventListener('online',()=>{setOffline(false);setStatus('live');save();});window.addEventListener('offline',()=>{setOffline(true);setStatus('offline');});}
+function initTabSwipe(){
+  if(document._tsb)return;
+  document._tsb=true;
+  const EDGE_PX=26;
+  let sx=0,sy=0,active=false,decided=false,fromEdge=false;
+  const ignoreSel='.swipe-outer,.item,.swipe-wrap,.filter-row,.urg-row,.cat-row,.poll-option,.input-card,.msg-compose,.fsheet,.app-popup-back,.photo-modal,textarea,input,select';
+  document.addEventListener('touchstart',e=>{
+    active=false;decided=false;fromEdge=false;
+    const app=document.getElementById('app');
+    if(!app||!app.classList.contains('active'))return;
+    if(filterSheetOpen||transitioning)return;
+    const t=e.touches[0];
+    sx=t.clientX;sy=t.clientY;
+    fromEdge=(sx<EDGE_PX)||(sx>window.innerWidth-EDGE_PX);
+    // Edge swipes always register so browser back-gestures don't eat them
+    if(!fromEdge&&e.target.closest(ignoreSel))return;
+    active=true;
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!active)return;
+    const dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
+    if(!decided&&(Math.abs(dx)>8||Math.abs(dy)>8)){
+      decided=true;
+      // Stricter vertical reject unless starting from edge
+      const tol=fromEdge?1.1:.8;
+      if(Math.abs(dy)>Math.abs(dx)*tol)active=false;
+    }
+  },{passive:true});
+  document.addEventListener('touchend',e=>{
+    if(!active)return;
+    active=false;
+    const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
+    const minDx=fromEdge?40:60;
+    if(Math.abs(dx)<minDx||Math.abs(dy)>Math.abs(dx)*.65||transitioning)return;
+    if(dx<0&&tabIdx<TABS.length-1)setTab(tabIdx+1);
+    else if(dx>0&&tabIdx>0)setTab(tabIdx-1);
+  },{passive:true});
+}
+async function init(){try{initTheme();}catch(e){}showScreen('loading');const cache=loadCache();if(cache){state=cache.state;}try{await initSW();}catch(e){}try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices};lastTs=d.updatedAt;cacheState();setStatus('live');setOffline(false);}catch(e){if(!cache){setStatus('error');renderLogin();showScreen('login');return;}setStatus('offline');setOffline(true);}try{renderLogin();const saved=localStorage.getItem('cfh_member');const ok=saved&&MEMBERS.find(m=>m.name===saved);if(ok){selectMember(saved);}else{showScreen('login');}startPoll();}catch(e){showScreen('login');}try{loadTgCfg();}catch(e){}try{initPush();}catch(e){}try{checkVersionUpdate();}catch(e){}try{checkInstallPrompt();}catch(e){}window.addEventListener('online',()=>{setOffline(false);setStatus('live');save();});window.addEventListener('offline',()=>{setOffline(true);setStatus('offline');});}
 init();
 </script>
 </body>
