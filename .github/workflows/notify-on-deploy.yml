@@ -1,0 +1,23 @@
+name: Notify on Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: ver
+        run: |
+          VER=$(grep -o "const VER='[^']*'" index.html | grep -o "'[^']*'" | tr -d "'")
+          echo "version=$VER" >> $GITHUB_OUTPUT
+
+      - name: Send push notification
+        run: |
+          curl -s -X POST https://cfh-push.jivancheemalfc.workers.dev \
+            -H "Content-Type: application/json" \
+            -d "{\"title\":\"Family Hub Updated 🚀\",\"body\":\"Now on ${{ steps.ver.outputs.version }} — open the app to see what's new\",\"addedBy\":\"__system__\",\"notifyAll\":true}"
