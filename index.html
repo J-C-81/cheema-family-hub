@@ -385,7 +385,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.4.0';
+const VER='v4.4.1';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -396,7 +396,7 @@ const EMOJIS=['👍','❤️','😂','😮','😢'];
 const CATS=[{id:'produce',label:'Produce'},{id:'dairy',label:'Dairy'},{id:'bakery',label:'Bakery'},{id:'meat',label:'Meat'},{id:'tins',label:'Tins'},{id:'drinks',label:'Drinks'},{id:'house',label:'Household'},{id:'other',label:'Other'}];
 const CAT_HINTS={produce:['apple','banana','orange','carrot','tomato','lettuce','spinach','potato','onion','garlic','lemon','lime','pepper','mushroom','broccoli','cucumber','avocado','fruit','veg'],dairy:['milk','cheese','yogurt','butter','cream','egg','eggs'],bakery:['bread','roll','bagel','croissant','cake','biscuit','flour','yeast'],meat:['chicken','beef','lamb','pork','fish','salmon','tuna','mince','steak','sausage'],drinks:['water','juice','coke','pepsi','coffee','tea','beer','wine','drink'],house:['soap','shampoo','washing','bleach','toilet','tissue','sponge','cleaning','bin','bag'],tins:['tin','can','pasta','rice','sauce','soup','beans']};
 let state={shop:[],todo:[],notes:[],notices:[]};
-let member=null,tabIdx=0,shopSort='recency-desc',todoSort='urgency-desc',shopFilters=[],todoFilters=[],shopUrg=0,todoUrg=0,shopCats=[];
+let ptrRefreshing=false,member=null,tabIdx=0,shopSort='recency-desc',todoSort='urgency-desc',shopFilters=[],todoFilters=[],shopUrg=0,todoUrg=0,shopCats=[];
 let lastTs=0,isSaving=false,pollTimer=null,openPicker=null,transitioning=false,filterSheetOpen=false;
 let notifDismissed=false,swReg=null,shouldFocus=false,showNoticeCompose=false,showPollCompose=false,pollOpts=['',''],pollQ='';
 let undoTimer=null,lastReadNotes=0;
@@ -528,62 +528,76 @@ function bindSwipe(outer){
 function initPullRefresh(){
   const c=document.getElementById('content');
   if(!c||c._ptr)return;c._ptr=true;
-  let sy=0,pulling=false,triggered=false,refreshing=false;
+  let sy=0,pulling=false,triggered=false;
   function memberColor(){return member?getMem(member).color:(TABS[tabIdx].accent||'#0ea5e9');}
 
-  function getInd(){
-    let ind=c.querySelector('.ptr-ind');
-    if(!ind){
-      ind=document.createElement('div');
-      ind.className='ptr-ind';
-      ind.style.cssText='height:0px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;opacity:0;transition:none;pointer-events:none;';
-      ind.innerHTML=`<div class="ptr-icon" style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,.15);transform:scale(0.7);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></div><span class="ptr-lbl" style="font-size:12px;font-weight:700;letter-spacing:.3px;color:var(--sub)">Pull to refresh</span>`;
-      c.insertBefore(ind,c.firstChild);
-    }
-    return ind;
+  // Indicator is fixed, positioned just below header - never inside content
+  let ind=document.getElementById('ptr-ind');
+  if(!ind){
+    ind=document.createElement('div');
+    ind.id='ptr-ind';
+    ind.style.cssText='position:fixed;left:0;right:0;display:flex;align-items:center;justify-content:center;z-index:50;opacity:0;pointer-events:none;transition:opacity .2s;';
+    ind.innerHTML='<div id="ptr-circle" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,.2);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></div>';
+    document.body.appendChild(ind);
+  }
+  const circle=document.getElementById('ptr-circle');
+
+  function posInd(pullPx){
+    const hdr=document.getElementById('mhdr');
+    const hdrH=hdr?hdr.offsetHeight:60;
+    // Centre the indicator in the revealed gap
+    ind.style.top=(hdrH + pullPx/2 - 18)+'px';
   }
 
   c.addEventListener('touchstart',e=>{
-    if(c.scrollTop!==0||refreshing)return;
+    if(c.scrollTop!==0||ptrRefreshing)return;
     sy=e.touches[0].clientY;pulling=true;triggered=false;
-    const ind=getInd();
-    ind.querySelector('.ptr-icon').style.background=memberColor();
+    circle.style.background=memberColor();
+    circle.style.animation='none';
+    circle.style.transform='scale(0.5) rotate(0deg)';
   },{passive:true});
 
   c.addEventListener('touchmove',e=>{
-    if(!pulling||refreshing)return;
+    if(!pulling||ptrRefreshing)return;
     const dy=e.touches[0].clientY-sy;
-    if(dy<=0||c.scrollTop>0){pulling=false;const ind=getInd();ind.style.height='0px';ind.style.opacity='0';return;}
-    const pull=Math.min(dy*0.5,72);
-    const pct=pull/55;
-    const ind=getInd();
-    ind.style.transition='none';
-    ind.style.height=pull+'px';
-    ind.style.opacity=Math.min(pct,1);
-    const icon=ind.querySelector('.ptr-icon');
-    icon.style.transform=`scale(${0.6+Math.min(pct,1)*0.4}) rotate(${dy*1.8}deg)`;
-    ind.querySelector('.ptr-lbl').textContent=pct>=1?'Release to refresh':'Pull to refresh';
+    if(dy<=0||c.scrollTop>0){
+      pulling=false;
+      ind.style.opacity='0';
+      c.style.transition='transform .3s cubic-bezier(.32,.72,.18,1)';
+      c.style.transform='';
+      return;
+    }
+    const pull=Math.min(dy*0.45,70);
+    const pct=Math.min(pull/50,1);
+    c.style.transition='none';
+    c.style.transform=`translate3d(0,${pull}px,0)`;
+    posInd(pull);
+    ind.style.opacity=pct;
+    circle.style.transform=`scale(${0.5+pct*0.5}) rotate(${dy*2}deg)`;
     if(pct>=1&&!triggered){triggered=true;haptic(14);}
   },{passive:true});
 
   c.addEventListener('touchend',async()=>{
     if(!pulling)return;
     pulling=false;
-    const ind=getInd();
     if(!triggered){
-      ind.style.transition='height .3s ease,opacity .3s ease';
-      ind.style.height='0px';ind.style.opacity='0';
+      c.style.transition='transform .3s cubic-bezier(.32,.72,.18,1)';
+      c.style.transform='';
+      ind.style.opacity='0';
+      setTimeout(()=>{c.style.transition='';c.style.transform='';},320);
       return;
     }
-    refreshing=true;
-    haptic([8,60,8]);
-    // Lock height while refreshing
-    ind.style.transition='height .2s ease';
-    ind.style.height='64px';
-    const icon=ind.querySelector('.ptr-icon');
-    icon.style.transform='scale(1)';
-    icon.style.animation='ptr-spin .7s linear infinite';
-    ind.querySelector('.ptr-lbl').textContent='Refreshing…';
+    ptrRefreshing=true;
+    haptic([6,50,8]);
+    // Hold content down, spin the circle
+    const hdr=document.getElementById('mhdr');
+    const holdY=58;
+    c.style.transition='transform .2s ease';
+    c.style.transform=`translate3d(0,${holdY}px,0)`;
+    posInd(holdY);
+    ind.style.opacity='1';
+    circle.style.transform='scale(1)';
+    circle.style.animation='ptr-spin .7s linear infinite';
 
     const t0=Date.now();
     try{
@@ -592,14 +606,19 @@ function initPullRefresh(){
       lastTs=d.updatedAt;cacheState();setOffline(false);
     }catch(e2){}
     const elapsed=Date.now()-t0;
-    if(elapsed<900)await sleep(900-elapsed);
+    if(elapsed<800)await sleep(800-elapsed);
 
-    icon.style.animation='none';
-    icon.style.transform='scale(1.15)';
-    ind.querySelector('.ptr-lbl').textContent='Done ✓';
-    haptic(12);
-    await sleep(480);
+    // Snap back then render
+    c.style.transition='transform .35s cubic-bezier(.32,.72,.18,1)';
+    c.style.transform='';
+    ind.style.transition='opacity .25s ease';
+    ind.style.opacity='0';
+    circle.style.animation='none';
+    await sleep(360);
+    c.style.transition='';c.style.transform='';
+    ind.style.transition='opacity .2s';
     renderContent();renderTabs();
+    ptrRefreshing=false;
   },{passive:true});
 }
 function buildMsgs(){const acc=TABS[2].accent,me=getMem(member);const notices=state.notices||[];const noticeBlock=!notices.length&&!showNoticeCompose?'':(notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span><button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span>${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}</div>${showNoticeCompose?noticeCompose():''}</div>`);const feed=state.notes.length===0?`<div class="empty"><div class="empty-icon">${iconSvg('notes',24)}</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`:[...state.notes].sort((a,b)=>((b.type==='poll'&&b.pinned)?1:0)-((a.type==='poll'&&a.pinned)?1:0)).map(n=>{const auth=getMem(n.author),isMe=n.author===member;if(n.type==='poll')return renderPollBubble(n,auth,isMe);const rx=n.reactions||{};const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');return`<div class="nwrap ${isMe?'mine':'theirs'}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div><div class="nbubble ${isMe?'mine':'theirs'}" style="background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}"><div class="ntext">${esc(n.text)}</div></div><div class="rbar" id="rb${n.id}">${rxH}<button class="radd" onclick="showPicker(event,'${n.id}')">+</button></div>${isMe?`<button class="ndel" onclick="delNote('${n.id}')">Delete</button>`:''}</div>`;}).join('');const composeSection=showNoticeCompose&&!notices.length?'':`<div class="msg-compose" style="border-top-color:${acc}"><textarea class="msg-ta" id="ni" placeholder="Message the family…" style="caret-color:${acc}"></textarea><div class="msg-ft"><div class="msg-as"><div class="av" style="width:20px;height:20px;font-size:8px;color:${me.color};background:${me.color}18;border:1.5px solid ${me.color}44;border-radius:28%;flex-shrink:0">${me.initials}</div><span>as</span><b style="color:${me.color};margin-left:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(member)}</b></div><div class="msg-actions"><button class="msg-tool-btn" onclick="showPollCompose=!showPollCompose;renderContent()" title="Create poll">${iconSvg('poll',14)}</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div></div></div>${showPollCompose?buildPollCompose():''}`;return`${notifBar()}${noticeBlock}${composeSection}<div class="msg-feed">${feed}</div><div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;}
