@@ -384,7 +384,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.3.1';
+const VER='v4.3.2';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -495,11 +495,12 @@ function bindSwipe(outer){
       locked=(adx>ady*2&&dx<0)?'x':'y';
       if(locked==='y')return;
     }
+    e.preventDefault();
     if(dx>=0){cx=0;item.style.transform='translate3d(0,0,0)';wrap.classList.remove('swiping');return;}
     cx=Math.max(dx,-item.offsetWidth*0.85);
     item.style.transform=`translate3d(${cx}px,0,0)`;
     wrap.classList.toggle('swiping',cx<-30);
-  },{passive:true});
+  },{passive:false});
   const release=()=>{
     if(gone||locked!=='x')return;
     locked=null;
