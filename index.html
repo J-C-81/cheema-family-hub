@@ -385,7 +385,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.3.7';
+const VER='v4.3.8';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -534,14 +534,15 @@ function initPullRefresh(){
   if(!bar){
     bar=document.createElement('div');
     bar.id='ptr-bar';
-    bar.style.cssText='position:fixed;bottom:0;left:0;right:0;height:4px;width:0%;z-index:999;opacity:0;border-radius:3px 3px 0 0;pointer-events:none;';
+    // Vertical bar on the right edge
+    bar.style.cssText='position:fixed;right:0;bottom:0;top:auto;width:3px;height:0%;z-index:999;opacity:0;border-radius:3px 0 0 3px;pointer-events:none;';
     document.body.appendChild(bar);
   }
   let glow=document.getElementById('ptr-glow');
   if(!glow){
     glow=document.createElement('div');
     glow.id='ptr-glow';
-    glow.style.cssText='position:fixed;bottom:0;left:0;right:0;height:16px;z-index:998;opacity:0;pointer-events:none;filter:blur(8px);';
+    glow.style.cssText='position:fixed;right:0;bottom:0;top:auto;width:10px;height:0%;z-index:998;opacity:0;pointer-events:none;filter:blur(5px);';
     document.body.appendChild(glow);
   }
 
@@ -560,8 +561,8 @@ function initPullRefresh(){
     bar.style.background=col;glow.style.background=col;
     const p=Math.min(dy/100*65,65);
     bar.style.transition='none';glow.style.transition='none';
-    bar.style.width=p+'%';bar.style.opacity='1';
-    glow.style.width=p+'%';glow.style.opacity='0.45';
+    bar.style.height=p+'%';bar.style.opacity='1';
+    glow.style.height=p+'%';glow.style.opacity='0.35';
     if(p>=60&&!triggered){triggered=true;haptic(14);}
   },{passive:true});
 
@@ -569,18 +570,17 @@ function initPullRefresh(){
     if(!pulling)return;
     pulling=false;
     if(!triggered){
-      bar.style.transition='opacity .4s,width .4s';glow.style.transition='opacity .4s';
+      bar.style.transition='opacity .4s';glow.style.transition='opacity .4s';
       bar.style.opacity='0';glow.style.opacity='0';
       return;
     }
     refreshing=true;
     const col=memberColor();
     bar.style.background=col;glow.style.background=col;
-    // Slowly crawl to 82% while loading
-    bar.style.transition='width 1.2s cubic-bezier(.4,0,.6,1)';
-    glow.style.transition='width 1.2s cubic-bezier(.4,0,.6,1)';
-    bar.style.width='82%';glow.style.width='82%';
-    bar.style.animation='ptr-pulse 1.4s ease infinite';
+    bar.style.transition='height 1.1s cubic-bezier(.4,0,.6,1)';
+    glow.style.transition='height 1.1s cubic-bezier(.4,0,.6,1)';
+    bar.style.height='82%';glow.style.height='82%';
+    bar.style.animation='ptr-pulse 1.2s ease infinite';
     const t0=Date.now();
     try{
       const d=await fbRead();
@@ -591,16 +591,14 @@ function initPullRefresh(){
     if(elapsed<1100)await sleep(1100-elapsed);
     renderContent();renderTabs();
     bar.style.animation='none';
-    // Sweep to 100%
-    bar.style.transition='width .25s ease';glow.style.transition='width .25s ease';
-    bar.style.width='100%';glow.style.width='100%';
-    await sleep(260);
-    // Fade out
-    bar.style.transition='opacity .6s ease';glow.style.transition='opacity .6s ease';
+    bar.style.transition='height .2s ease';glow.style.transition='height .2s ease';
+    bar.style.height='100%';glow.style.height='100%';
+    await sleep(220);
+    bar.style.transition='opacity .55s ease';glow.style.transition='opacity .55s ease';
     bar.style.opacity='0';glow.style.opacity='0';
-    await sleep(650);
-    bar.style.width='0%';bar.style.transition='none';
-    glow.style.width='0%';glow.style.transition='none';
+    await sleep(600);
+    bar.style.height='0%';bar.style.transition='none';
+    glow.style.height='0%';glow.style.transition='none';
     refreshing=false;
   },{passive:true});
 }
@@ -646,7 +644,7 @@ function checkVersionUpdate(){
 }
 function showUpdatePopup(){
   if(document.querySelector('.app-popup-back'))return;
-  const notes=`<b>What's new in ${VER}:</b><br>• Real slide between tabs<br>• Smoother pull-to-refresh<br>• Reworked swipe-to-delete<br>• Multi-select filters<br>• Edge-aware tab swipes<br>• No more self-notifications`;
+  const notes=`The app has been updated to <b>${VER}</b>. Pull down to refresh and get the latest.`;
   const back=document.createElement('div');
   back.className='app-popup-back';
   back.innerHTML=`<div class="app-popup"><div class="app-popup-ico">✨</div><div class="app-popup-title">Updated</div><div class="app-popup-sub">Now on ${VER}</div><div class="app-popup-body">${notes}</div><button class="app-popup-btn" onclick="this.closest('.app-popup-back').remove()">Got it</button></div>`;
