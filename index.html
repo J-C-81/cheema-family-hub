@@ -382,7 +382,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.4.4';
+const VER='v4.4.5';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -421,7 +421,7 @@ const VAPID_PUB='BHeqNiEDdtZG2JXW-xhJxz8ARfkIPkyfgfQjt5rjf5a4I0nQJZYRqkPGXs-MnDk
 function b64ToU8(b64){const p='='.repeat((4-b64.length%4)%4);const r=atob((b64+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)));}
 async function initSW(){if(!('serviceWorker' in navigator))return;try{swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});}catch(e){console.log('SW:',e);}}
 async function subscribePush(){if(!swReg||!('PushManager' in window))return false;try{const perm=await Notification.requestPermission();if(perm!=='granted')return false;let sub=await swReg.pushManager.getSubscription();if(!sub){await navigator.serviceWorker.ready;sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});}const key=sub.endpoint.split('/').pop().replace(/[^a-zA-Z0-9]/g,'').slice(-20)||'sub'+Date.now();await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...sub.toJSON(),member})});return true;}catch(e){return false;}}
-async function sendPushNotif(title,body,addedBy){if(!PUSH_RELAY)return;try{fetch(PUSH_RELAY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,addedBy})});}catch(e){}}
+async function sendPushNotif(title,body,addedBy){if(!PUSH_RELAY)return;try{fetch(PUSH_RELAY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,addedBy,notifyAll:addedBy==='__system__'})});}catch(e){}}
 let tgCfg=null,notifBatch=[],notifTimer2=null;
 async function loadTgCfg(){try{const r=await fetch('https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/tg_config.json');const d=await r.json();if(d&&d.token)tgCfg=d;}catch(e){}}
 function queueNotif(type,who,text){notifBatch.push({type,who,text});if(notifTimer2)clearTimeout(notifTimer2);notifTimer2=setTimeout(()=>{const b=[...notifBatch];notifBatch=[];if(!b.length)return;const groups={};for(const x of b){const k=x.type+'|'+x.who;(groups[k]=groups[k]||{type:x.type,who:x.who,items:[]}).items.push(x.text);}const gs=Object.values(groups);const section={shop:'Shopping',todo:'To-Do'},word={shop:'items',todo:'tasks'};let title,body;if(gs.length===1){const g=gs[0],n=g.items.length;if(g.type==='msg'){title=n===1?g.who:`${g.who} sent ${n} messages`;body=n===1?g.items[0]:'';}else{title=n===1?`${g.who} added to ${section[g.type]}`:`${g.who} added ${n} ${word[g.type]} to ${section[g.type]}`;body=n===1?g.items[0]:'';}}else{title='Family Hub';body=gs.map(g=>{const n=g.items.length;if(g.type==='msg')return n===1?`${g.who}: ${g.items[0]}`:`${g.who} sent ${n} messages`;return n===1?`${g.who} added to ${section[g.type]}: ${g.items[0]}`:`${g.who} added ${n} to ${section[g.type]}`;}).join(' · ');}sendPushNotif(title,body,member);},8000);}
@@ -647,7 +647,11 @@ function checkVersionUpdate(){
   const last=localStorage.getItem('cfh-last-ver');
   if(last!==VER){
     localStorage.setItem('cfh-last-ver',VER);
-    if(last){setTimeout(showUpdatePopup,900);}
+    if(last){
+      setTimeout(showUpdatePopup,900);
+      // Send push to all devices - use '__system__' so nobody is excluded
+      sendPushNotif('Family Hub Updated 🚀',`Now on ${VER} — open the app to see what\'s new`,'__system__');
+    }
   }
 }
 function showUpdatePopup(){
