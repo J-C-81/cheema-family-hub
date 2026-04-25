@@ -385,7 +385,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.3.6';
+const VER='v4.3.7';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -534,22 +534,18 @@ function initPullRefresh(){
   if(!bar){
     bar=document.createElement('div');
     bar.id='ptr-bar';
-    bar.style.cssText='position:fixed;top:0;left:0;right:0;height:4px;width:0%;z-index:999;opacity:0;border-radius:0 3px 3px 0;pointer-events:none;';
+    bar.style.cssText='position:fixed;bottom:0;left:0;right:0;height:4px;width:0%;z-index:999;opacity:0;border-radius:3px 3px 0 0;pointer-events:none;';
     document.body.appendChild(bar);
   }
-  // Glow element behind bar
   let glow=document.getElementById('ptr-glow');
   if(!glow){
     glow=document.createElement('div');
     glow.id='ptr-glow';
-    glow.style.cssText='position:fixed;top:0;left:0;right:0;height:12px;z-index:998;opacity:0;pointer-events:none;filter:blur(6px);';
+    glow.style.cssText='position:fixed;bottom:0;left:0;right:0;height:16px;z-index:998;opacity:0;pointer-events:none;filter:blur(8px);';
     document.body.appendChild(glow);
   }
 
-  function setColor(acc){
-    bar.style.background=acc;
-    glow.style.background=acc;
-  }
+  function memberColor(){return member?getMem(member).color:(TABS[tabIdx].accent||'#0ea5e9');}
 
   c.addEventListener('touchstart',e=>{
     if(c.scrollTop!==0||refreshing)return;
@@ -560,12 +556,12 @@ function initPullRefresh(){
     if(!pulling||refreshing)return;
     const dy=e.touches[0].clientY-sy;
     if(dy<=0||c.scrollTop>0){pulling=false;bar.style.opacity='0';glow.style.opacity='0';return;}
-    const acc=TABS[tabIdx].accent||'#0ea5e9';
-    setColor(acc);
-    const p=Math.min(dy/80*65,65);
+    const col=memberColor();
+    bar.style.background=col;glow.style.background=col;
+    const p=Math.min(dy/100*65,65);
     bar.style.transition='none';glow.style.transition='none';
     bar.style.width=p+'%';bar.style.opacity='1';
-    glow.style.width=p+'%';glow.style.opacity='0.5';
+    glow.style.width=p+'%';glow.style.opacity='0.45';
     if(p>=60&&!triggered){triggered=true;haptic(14);}
   },{passive:true});
 
@@ -573,16 +569,18 @@ function initPullRefresh(){
     if(!pulling)return;
     pulling=false;
     if(!triggered){
-      bar.style.transition='opacity .3s,width .3s';glow.style.transition='opacity .3s';
+      bar.style.transition='opacity .4s,width .4s';glow.style.transition='opacity .4s';
       bar.style.opacity='0';glow.style.opacity='0';
       return;
     }
     refreshing=true;
-    // Race to 85% with a shimmering pulse
-    bar.style.transition='width .7s cubic-bezier(.4,0,.2,1)';
-    glow.style.transition='width .7s cubic-bezier(.4,0,.2,1)';
-    bar.style.width='85%';glow.style.width='85%';
-    bar.style.animation='ptr-pulse 1s ease infinite';
+    const col=memberColor();
+    bar.style.background=col;glow.style.background=col;
+    // Slowly crawl to 82% while loading
+    bar.style.transition='width 1.2s cubic-bezier(.4,0,.6,1)';
+    glow.style.transition='width 1.2s cubic-bezier(.4,0,.6,1)';
+    bar.style.width='82%';glow.style.width='82%';
+    bar.style.animation='ptr-pulse 1.4s ease infinite';
     const t0=Date.now();
     try{
       const d=await fbRead();
@@ -590,17 +588,17 @@ function initPullRefresh(){
       lastTs=d.updatedAt;cacheState();setOffline(false);
     }catch(e2){}
     const elapsed=Date.now()-t0;
-    if(elapsed<900)await sleep(900-elapsed);
+    if(elapsed<1100)await sleep(1100-elapsed);
     renderContent();renderTabs();
-    // Slam to 100%
     bar.style.animation='none';
-    bar.style.transition='width .15s ease';glow.style.transition='width .15s ease';
+    // Sweep to 100%
+    bar.style.transition='width .25s ease';glow.style.transition='width .25s ease';
     bar.style.width='100%';glow.style.width='100%';
-    await sleep(160);
-    // Flash bright then fade
-    bar.style.transition='opacity .5s ease';glow.style.transition='opacity .5s ease';
+    await sleep(260);
+    // Fade out
+    bar.style.transition='opacity .6s ease';glow.style.transition='opacity .6s ease';
     bar.style.opacity='0';glow.style.opacity='0';
-    await sleep(520);
+    await sleep(650);
     bar.style.width='0%';bar.style.transition='none';
     glow.style.width='0%';glow.style.transition='none';
     refreshing=false;
