@@ -179,12 +179,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .content-stage{position:relative;flex:1;overflow:hidden}
 .tab-ghost{position:absolute;inset:0;overflow:hidden;pointer-events:none;will-change:transform;background:var(--bg);z-index:5}
 .accent-strip{height:2px;transition:background .3s}
-.ptr{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;height:64px;position:absolute;top:-64px;left:0;right:0;opacity:0;transition:opacity .18s;pointer-events:none;z-index:10;}
-.ptr.show{opacity:1;}
-.ptr-ring{display:flex;align-items:center;justify-content:center;will-change:transform;}
-.ptr-arc{stroke-dasharray:0 88;transition:stroke-dasharray .12s linear,stroke .15s;}
-.ptr-lbl{font-size:11px;font-weight:600;color:var(--sub);letter-spacing:.3px;}
-@keyframes ptr-spin{to{transform:rotate(360deg)}}.ptr.spinning .ptr-ring{animation:ptr-spin .7s linear infinite;}
+/* ptr handled dynamically via ptr-bar */
 .input-card{margin:12px 12px 0;background:var(--surf);border-radius:var(--r);overflow:hidden;border:1px solid var(--brd);box-shadow:var(--shadow);transition:background .3s,border-color .3s;animation:fadeUp .25s var(--ease) both}
 .input-row{display:flex;align-items:center;border-bottom:1px solid var(--brd)}
 .main-input{flex:1;min-width:0;padding:13px 13px;border:none;background:transparent;font-size:15px;font-weight:500;outline:none;color:var(--text)}
@@ -223,9 +218,15 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .swipe-outer:nth-child(3){animation-delay:.07s}
 .swipe-outer:nth-child(4){animation-delay:.10s}
 .swipe-outer:nth-child(n+5){animation-delay:.13s}
-.swipe-wrap{position:relative;background:var(--surf);border-radius:var(--r);transition:background .15s}
-.swipe-wrap.swiping{background:#ef4444}
-.swipe-hint{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:white;font-size:12px;font-weight:700;pointer-events:none;display:flex;align-items:center;gap:4px}
+.swipe-wrap{position:relative;background:var(--surf);border-radius:var(--r);overflow:hidden}
+.swipe-delete-bg{position:absolute;right:0;top:0;bottom:0;width:80px;background:#ef4444;display:flex;align-items:center;justify-content:center;border-radius:0 var(--r) var(--r) 0;transition:width .2s ease}
+.swipe-handle{position:absolute;right:0;top:0;bottom:0;width:40px;touch-action:none;display:flex;align-items:center;justify-content:center;z-index:3}
+.swipe-handle::after{content:'';display:block;width:3px;height:20px;border-radius:2px;background:var(--brd2);box-shadow:-6px 0 0 var(--brd2)}
+.swipe-delete-bg{position:absolute;right:0;top:0;bottom:0;width:80px;background:#ef4444;display:flex;align-items:center;justify-content:center;border-radius:var(--r);opacity:0;transition:opacity .15s}
+.swipe-delete-bg svg{width:18px;height:18px;stroke:#fff;stroke-width:2;fill:none}
+.swipe-handle{position:absolute;right:0;top:0;bottom:0;width:36px;touch-action:none;cursor:grab;display:flex;align-items:center;justify-content:center;opacity:.25;z-index:2}
+.swipe-handle::after{content:'';display:block;width:3px;height:22px;border-radius:2px;background:var(--sub);box-shadow:-5px 0 0 var(--sub)}
+.item{position:relative;z-index:1}
 .item{display:flex;align-items:center;gap:10px;background:var(--surf);border-radius:var(--r);padding:11px 12px;border:1px solid var(--brd);border-left-width:3px;position:relative;z-index:1;will-change:transform;touch-action:pan-y;transition:background .3s,border-color .3s}
 .item.done{opacity:.28}
 .ichk{width:22px;height:22px;border-radius:7px;border:1.5px solid;background:transparent;cursor:pointer;flex-shrink:0;padding:0;transition:all .18s var(--spring);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
@@ -377,14 +378,14 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
     <div class="tabs-row" id="tabs"></div>
     <div class="accent-strip" id="acc-strip"></div>
   </header>
-  <div class="ptr" id="ptr"></div>
+  
   <div class="content" id="content"></div>
   <div id="fsheet-back" class="fsheet-back" onclick="closeFilterSheet()"></div>
   <div id="fsheet" class="fsheet"></div>
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.3.2';
+const VER='v4.3.3';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -475,44 +476,39 @@ function notifBar(){if(notifDismissed||!('Notification' in window))return'';if(N
 async function doEnableNotifs(){const ok=await subscribePush();notifDismissed=true;renderContent();if(ok&&swReg)swReg.showNotification('Notifications on',{body:"You'll get notified when the family adds something",icon:'/icon.png'});}
 function renderContent(){const c=document.getElementById('content'),acc=TABS[tabIdx].accent;if(tabIdx===2){c.innerHTML=buildMsgs();bindMsgEv();initTabSwipe();return;}const isS=tabIdx===0,list=isS?state.shop:state.todo;const sort=isS?shopSort:todoSort,urg=isS?shopUrg:todoUrg;const filters=isS?shopFilters:todoFilters;let filtered=filters.length===0?list:list.filter(i=>filters.includes(i.addedBy));if(isS&&shopCats.length)filtered=filtered.filter(i=>shopCats.includes(i.cat||''));const pending=sortList(filtered.filter(i=>!i.done),sort),done=sortList(filtered.filter(i=>i.done),sort);const notices=state.notices||[];const noticeHTML=notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notices</span></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:'';const urgBtns=URGENCY.map((u,i)=>`<button class="urg-btn" onclick="setUrg(${i})" style="border-color:${urg===i?u.color:'var(--brd)'};background:${urg===i?u.color+'18':'transparent'};color:${urg===i?u.color:'var(--muted)'}"><span class="udot" style="background:${urg===i?u.ring:'var(--brd)'}"></span>${u.label}</button>`).join('');const emptyIcon=isS?iconSvg('shop',24):iconSvg('todo',24);const pH=pending.length===0?`<div class="empty"><div class="empty-icon">${emptyIcon}</div><div class="empty-title">${list.length===0?(isS?'Shopping list is empty':'No tasks yet'):'All done'}</div>${list.length===0?'<div class="empty-sub">Tap above to add something</div>':''}</div>`:pending.map(it=>rItem(it,false)).join('');const dH=done.length===0?'':`<div class="done-sec"><div class="done-sep"></div><div class="done-hdr"><span class="done-ttl">Completed · ${done.length}</span><button class="clear-btn" onclick="clearDone()">Clear all</button></div>${done.map(it=>rItem(it,true)).join('')}</div>`;c.innerHTML=`${notifBar()}${noticeHTML}<div class="input-card"><div class="input-row"><input class="main-input" id="mi" placeholder="${isS?'Add to shopping…':'Add a task…'}" style="caret-color:${acc}" onkeydown="if(event.key==='Enter')addItem()"><button class="add-btn" onclick="addItem()" style="background:${acc}">Add</button></div><div class="urg-row"><span class="urg-lbl">Priority</span>${urgBtns}</div></div><div class="list-hdr"><span class="list-hdr-txt">${pending.length} remaining</span><button class="filter-trigger" onclick="openFilterSheet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>Filter &amp; Sort${hasActiveFilters()?'<span class="filter-dot"></span>':''}</button></div><div class="list-wrap">${pH}</div>${dH}<div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;if(shouldFocus){document.getElementById('mi')?.focus();shouldFocus=false;}document.querySelectorAll('.swipe-outer').forEach(bindSwipe);initTabSwipe();initPullRefresh();}
 function setCat(cid){if(tabIdx!==0)return;if(cid==='All'){shopCats=[];}else{const i=shopCats.indexOf(cid);if(i>=0)shopCats.splice(i,1);else shopCats.push(cid);}renderContent();if(filterSheetOpen)renderFilterSheetContent();}
-function rItem(it,isDone){const m=getMem(it.addedBy),u=it.urgency!=null?URGENCY[it.urgency]:URGENCY[0];const ci=CATS.find(c=>c.id===it.cat);const ub=`<span class="iurg" onclick="cycleUrg(event,'${it.id}')" style="color:${u.color}"><span class="udot" style="background:${u.ring};margin-right:2px"></span>${u.label}</span>`;const catTag=ci&&!isDone?`<span class="icat">${iconSvg('tag',10)}${ci.label}</span>`:'';const chk=`border-color:${m.color}55${isDone?`;background:${m.color}22;color:${m.color}`:''}`;const bord=isDone?`${u.color}44`:u.color;const photoEl=it.photo?`<img class="item-photo" src="${it.photo}" onclick="viewPhoto('${it.photo}')">`:(isDone?'':`<button class="photo-btn" onclick="addPhoto('${it.id}')" title="Add photo">${iconSvg('camera',14)}</button>`);return`<div class="swipe-outer"><div class="swipe-wrap" data-id="${it.id}"><span class="swipe-hint">✕ Delete</span><div class="item${isDone?' done':''}" style="border-left-color:${bord}"><button class="ichk" style="${chk}" onclick="toggleItem('${it.id}')">${isDone?'✓':''}</button><div class="ibody"><div class="itext${isDone?' struck':''}">${esc(it.text)}</div><div class="imeta"><span class="iname" style="color:${m.color}">${esc(it.addedBy)}</span>${ub}<span class="itime">${isDone?`by ${esc(it.doneBy||'?')}`:timeAgo(it.ts)}</span>${catTag}</div></div>${photoEl}<button class="del-btn" onclick="delItem('${it.id}')">×</button></div></div></div>`;}
+function rItem(it,isDone){const m=getMem(it.addedBy),u=it.urgency!=null?URGENCY[it.urgency]:URGENCY[0];const ci=CATS.find(c=>c.id===it.cat);const ub=`<span class="iurg" onclick="cycleUrg(event,'${it.id}')" style="color:${u.color}"><span class="udot" style="background:${u.ring};margin-right:2px"></span>${u.label}</span>`;const catTag=ci&&!isDone?`<span class="icat">${iconSvg('tag',10)}${ci.label}</span>`:'';const chk=`border-color:${m.color}55${isDone?`;background:${m.color}22;color:${m.color}`:''}`;const bord=isDone?`${u.color}44`:u.color;const photoEl=it.photo?`<img class="item-photo" src="${it.photo}" onclick="viewPhoto('${it.photo}')">`:(isDone?'':`<button class="photo-btn" onclick="addPhoto('${it.id}')" title="Add photo">${iconSvg('camera',14)}</button>`);return`<div class="swipe-outer"><div class="swipe-wrap" data-id="${it.id}"><div class="swipe-delete-bg"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></div><div class="item${isDone?' done':''}" style="border-left-color:${bord}"><button class="ichk" style="${chk}" onclick="toggleItem('${it.id}')">${isDone?'✓':''}</button><div class="ibody"><div class="itext${isDone?' struck':''}">${esc(it.text)}</div><div class="imeta"><span class="iname" style="color:${m.color}">${esc(it.addedBy)}</span>${ub}<span class="itime">${isDone?`by ${esc(it.doneBy||'?')}`:timeAgo(it.ts)}</span>${catTag}</div></div>${photoEl}<button class="del-btn" onclick="delItem('${it.id}')">×</button></div><div class="swipe-handle"></div></div></div>`;}
 function bindSwipe(outer){
-  const wrap=outer.querySelector('.swipe-wrap'),item=outer.querySelector('.item');
-  if(!wrap||!item)return;
-  let sx=0,sy=0,cx=0,locked=null,gone=false;
-  item.addEventListener('touchstart',e=>{
+  const wrap=outer.querySelector('.swipe-wrap'),handle=outer.querySelector('.swipe-handle'),bg=outer.querySelector('.swipe-delete-bg');
+  if(!wrap||!handle)return;
+  let sx=0,cx=0,gone=false;
+  handle.addEventListener('touchstart',e=>{
     if(gone)return;
-    sx=e.touches[0].clientX;sy=e.touches[0].clientY;
-    cx=0;locked=null;
-    item.style.transition='none';
+    e.stopPropagation();
+    sx=e.touches[0].clientX;cx=0;
+    wrap.querySelector('.item').style.transition='none';
   },{passive:true});
-  item.addEventListener('touchmove',e=>{
-    if(gone||locked==='y')return;
-    const dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
-    const adx=Math.abs(dx),ady=Math.abs(dy);
-    if(locked===null){
-      if(adx<6&&ady<6)return;
-      locked=(adx>ady*2&&dx<0)?'x':'y';
-      if(locked==='y')return;
-    }
-    e.preventDefault();
-    if(dx>=0){cx=0;item.style.transform='translate3d(0,0,0)';wrap.classList.remove('swiping');return;}
-    cx=Math.max(dx,-item.offsetWidth*0.85);
-    item.style.transform=`translate3d(${cx}px,0,0)`;
-    wrap.classList.toggle('swiping',cx<-30);
+  handle.addEventListener('touchmove',e=>{
+    if(gone)return;
+    e.preventDefault();e.stopPropagation();
+    const dx=e.touches[0].clientX-sx;
+    if(dx>0){cx=0;wrap.querySelector('.item').style.transform='';bg.style.opacity='0';return;}
+    cx=Math.max(dx,-wrap.offsetWidth*0.85);
+    wrap.querySelector('.item').style.transform=`translate3d(${cx}px,0,0)`;
+    const pct=Math.min(Math.abs(cx)/90,1);
+    bg.style.opacity=pct;
+    bg.style.width=Math.max(80,Math.abs(cx))+'px';
   },{passive:false});
   const release=()=>{
-    if(gone||locked!=='x')return;
-    locked=null;
-    if(cx<=-item.offsetWidth*0.35){
+    if(gone)return;
+    const item=wrap.querySelector('.item');
+    if(cx<=-wrap.offsetWidth*0.35){
       gone=true;haptic([8,30,12]);
       item.style.transition='transform .2s ease,opacity .15s ease';
-      item.style.transform=`translate3d(-${item.offsetWidth+20}px,0,0)`;
+      item.style.transform=`translate3d(-${wrap.offsetWidth+20}px,0,0)`;
       item.style.opacity='0';
       setTimeout(()=>{
         outer.style.transition='max-height .28s ease,opacity .2s ease,margin .28s ease';
-        outer.style.overflow='hidden';
-        outer.style.maxHeight=outer.offsetHeight+'px';
+        outer.style.overflow='hidden';outer.style.maxHeight=outer.offsetHeight+'px';
         requestAnimationFrame(()=>requestAnimationFrame(()=>{
           outer.style.maxHeight='0';outer.style.opacity='0';outer.style.marginBottom='0';
         }));
@@ -520,92 +516,61 @@ function bindSwipe(outer){
       },200);
     }else{
       item.style.transition='transform .3s cubic-bezier(.34,1.2,.64,1)';
-      item.style.transform='translate3d(0,0,0)';
-      wrap.classList.remove('swiping');cx=0;
+      item.style.transform='';
+      bg.style.transition='opacity .2s,width .2s';
+      bg.style.opacity='0';bg.style.width='80px';cx=0;
     }
   };
-  item.addEventListener('touchend',release);
-  item.addEventListener('touchcancel',()=>{
-    if(gone||locked!=='x')return;
-    locked=null;
-    item.style.transition='transform .3s cubic-bezier(.34,1.2,.64,1)';
-    item.style.transform='translate3d(0,0,0)';
-    wrap.classList.remove('swiping');cx=0;
-  });
+  handle.addEventListener('touchend',release);
+  handle.addEventListener('touchcancel',release);
 }
 function initPullRefresh(){
-  const c=document.getElementById('content'),ptr=document.getElementById('ptr');
-  if(!c||!ptr||c._ptr)return;
+  const c=document.getElementById('content');
+  if(!c||c._ptr)return;
   c._ptr=true;
-  let sy=0,pulling=false,triggered=false,refreshing=false,pct=0;
-  const acc=()=>TABS[tabIdx].accent||'#0ea5e9';
+  let sy=0,pulling=false,triggered=false,refreshing=false;
 
-  // Build a cooler ptr UI: spinning arc + label
-  ptr.innerHTML=`<div class="ptr-ring"><svg viewBox="0 0 36 36" width="36" height="36"><circle class="ptr-track" cx="18" cy="18" r="14" fill="none" stroke-width="2.5"/><circle class="ptr-arc" cx="18" cy="18" r="14" fill="none" stroke-width="2.5" stroke-linecap="round" style="transform:rotate(-90deg);transform-origin:50% 50%"/></svg></div><span class="ptr-lbl">Pull to refresh</span>`;
-
-  const ring=ptr.querySelector('.ptr-arc');
-  const track=ptr.querySelector('.ptr-track');
-  const lbl=ptr.querySelector('.ptr-lbl');
-  const CIRC=2*Math.PI*14;
-
-  function setArc(p,color){
-    ring.style.stroke=color;
-    track.style.stroke=color+'30';
-    const dash=CIRC*Math.min(p,1);
-    ring.style.strokeDasharray=`${dash} ${CIRC}`;
+  // Use top progress bar instead of displacing content
+  let bar=document.getElementById('ptr-bar');
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='ptr-bar';
+    bar.style.cssText='position:fixed;top:0;left:0;height:3px;width:0%;z-index:999;transition:none;border-radius:0 2px 2px 0;opacity:0;';
+    document.body.appendChild(bar);
   }
 
   c.addEventListener('touchstart',e=>{
     if(c.scrollTop!==0||refreshing)return;
-    sy=e.touches[0].clientY;pulling=true;triggered=false;pct=0;
-    setArc(0,acc());
+    sy=e.touches[0].clientY;pulling=true;triggered=false;
   },{passive:true});
 
   c.addEventListener('touchmove',e=>{
-    if(!pulling)return;
+    if(!pulling||refreshing)return;
     const dy=e.touches[0].clientY-sy;
-    if(dy<=0||c.scrollTop>0){ptr.classList.remove('show');triggered=false;pct=0;return;}
-    const pull=Math.min(dy*0.45,88);
-    pct=pull/62;
-    c.style.transition='none';
-    c.style.transform=`translate3d(0,${pull}px,0)`;
-    const color=acc();
-    if(pull>=38){
-      ptr.classList.add('show');
-      if(pct>=1){
-        setArc(1,color);
-        lbl.textContent='Release to refresh';
-        if(!triggered){triggered=true;haptic(14);}
-        // Gently rotate when ready
-        ptr.querySelector('.ptr-ring').style.transform=`rotate(${pull*3}deg)`;
-      } else {
-        setArc(pct,color);
-        lbl.textContent='Pull to refresh';
-        ptr.querySelector('.ptr-ring').style.transform=`rotate(${pull*2}deg)`;
-      }
-    } else {
-      ptr.classList.remove('show');triggered=false;
-    }
+    if(dy<=0||c.scrollTop>0){pulling=false;bar.style.opacity='0';bar.style.width='0%';return;}
+    const pct=Math.min(dy/80*60,60);
+    const acc=TABS[tabIdx].accent||'#0ea5e9';
+    bar.style.background=acc;
+    bar.style.opacity='1';
+    bar.style.transition='none';
+    bar.style.width=pct+'%';
+    if(pct>=55&&!triggered){triggered=true;haptic(14);}
   },{passive:true});
 
   c.addEventListener('touchend',async()=>{
     if(!pulling)return;
     pulling=false;
     if(!triggered){
-      c.style.transition='transform .3s cubic-bezier(.32,.72,.18,1)';
-      c.style.transform='translate3d(0,0,0)';
-      setTimeout(()=>{c.style.transition='';c.style.transform='';},320);
-      ptr.classList.remove('show');return;
+      bar.style.transition='opacity .3s,width .3s';
+      bar.style.opacity='0';bar.style.width='0%';
+      return;
     }
     refreshing=true;
-    lbl.textContent='Refreshing…';
-    setArc(1,acc());
-    // Start spinning animation
-    ptr.querySelector('.ptr-ring').style.transition='transform .4s ease';
-    ptr.querySelector('.ptr-ring').style.transform='rotate(0deg)';
-    ptr.classList.add('spinning');
-    c.style.transition='transform .25s cubic-bezier(.32,.72,.18,1)';
-    c.style.transform='translate3d(0,54px,0)';
+    const acc=TABS[tabIdx].accent||'#0ea5e9';
+    bar.style.background=acc;
+    // Animate to 80% while loading
+    bar.style.transition='width .6s cubic-bezier(.4,0,.2,1)';
+    bar.style.width='80%';
     const t0=Date.now();
     try{
       const d=await fbRead();
@@ -613,16 +578,17 @@ function initPullRefresh(){
       lastTs=d.updatedAt;cacheState();setOffline(false);
     }catch(e2){}
     const elapsed=Date.now()-t0;
-    const MIN=1200;
-    if(elapsed<MIN)await sleep(MIN-elapsed);
-    lbl.textContent='Done ✓';
-    setArc(1,acc());
+    if(elapsed<800)await sleep(800-elapsed);
     renderContent();renderTabs();
-    await sleep(300);
-    ptr.classList.remove('spinning','show');
-    c.style.transition='transform .38s cubic-bezier(.32,.72,.18,1)';
-    c.style.transform='translate3d(0,0,0)';
-    setTimeout(()=>{c.style.transition='';c.style.transform='';refreshing=false;},400);
+    // Complete the bar
+    bar.style.transition='width .2s ease';
+    bar.style.width='100%';
+    await sleep(220);
+    bar.style.transition='opacity .35s ease';
+    bar.style.opacity='0';
+    await sleep(380);
+    bar.style.width='0%';bar.style.transition='none';
+    refreshing=false;
   },{passive:true});
 }
 function buildMsgs(){const acc=TABS[2].accent,me=getMem(member);const notices=state.notices||[];const noticeBlock=!notices.length&&!showNoticeCompose?'':(notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span><button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span>${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}</div>${showNoticeCompose?noticeCompose():''}</div>`);const feed=state.notes.length===0?`<div class="empty"><div class="empty-icon">${iconSvg('notes',24)}</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`:[...state.notes].sort((a,b)=>((b.type==='poll'&&b.pinned)?1:0)-((a.type==='poll'&&a.pinned)?1:0)).map(n=>{const auth=getMem(n.author),isMe=n.author===member;if(n.type==='poll')return renderPollBubble(n,auth,isMe);const rx=n.reactions||{};const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');return`<div class="nwrap ${isMe?'mine':'theirs'}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div><div class="nbubble ${isMe?'mine':'theirs'}" style="background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}"><div class="ntext">${esc(n.text)}</div></div><div class="rbar" id="rb${n.id}">${rxH}<button class="radd" onclick="showPicker(event,'${n.id}')">+</button></div>${isMe?`<button class="ndel" onclick="delNote('${n.id}')">Delete</button>`:''}</div>`;}).join('');const composeSection=showNoticeCompose&&!notices.length?'':`<div class="msg-compose" style="border-top-color:${acc}"><textarea class="msg-ta" id="ni" placeholder="Message the family…" style="caret-color:${acc}"></textarea><div class="msg-ft"><div class="msg-as"><div class="av" style="width:20px;height:20px;font-size:8px;color:${me.color};background:${me.color}18;border:1.5px solid ${me.color}44;border-radius:28%;flex-shrink:0">${me.initials}</div><span>as</span><b style="color:${me.color};margin-left:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(member)}</b></div><div class="msg-actions"><button class="msg-tool-btn" onclick="showPollCompose=!showPollCompose;renderContent()" title="Create poll">${iconSvg('poll',14)}</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div></div></div>${showPollCompose?buildPollCompose():''}`;return`${notifBar()}${noticeBlock}${composeSection}<div class="msg-feed">${feed}</div><div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;}
