@@ -131,6 +131,7 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 @keyframes loadfill{from{width:0}to{width:75%}}
 @keyframes ptr-bounce{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-7px);opacity:1}}
 @keyframes ptr-spin{to{transform:rotate(360deg) scale(1)}}
+@keyframes ptr-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 #loading{align-items:center;justify-content:center;flex-direction:column;gap:18px}
 .load-icon{width:64px;height:64px;border-radius:20px;background:linear-gradient(145deg,#60a5fa,#818cf8);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 32px rgba(96,165,250,.3);animation:scaleIn .4s var(--spring) both}
 .load-label{font-size:13px;font-weight:600;color:var(--sub);letter-spacing:.3px}
@@ -384,7 +385,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.3.5';
+const VER='v4.3.6';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -527,75 +528,61 @@ function bindSwipe(outer){
 function initPullRefresh(){
   const c=document.getElementById('content');
   if(!c||c._ptr)return;c._ptr=true;
-  let sy=0,pulling=false,triggered=false,refreshing=false,pct=0;
+  let sy=0,pulling=false,triggered=false,refreshing=false;
 
-  // Overlay with spinning logo + label
-  let ov=document.getElementById('ptr-ov');
-  if(!ov){
-    ov=document.createElement('div');
-    ov.id='ptr-ov';
-    ov.style.cssText='position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:998;opacity:0;pointer-events:none;transition:opacity .2s;backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px);background:var(--bg);';
-    ov.innerHTML=`
-      <div id="ptr-spinner" style="width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 32px rgba(0,0,0,.18);">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-      </div>
-      <div id="ptr-label" style="font-size:13px;font-weight:700;letter-spacing:.4px;opacity:.7;">Pull to refresh</div>
-    `;
-    document.body.appendChild(ov);
+  let bar=document.getElementById('ptr-bar');
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='ptr-bar';
+    bar.style.cssText='position:fixed;top:0;left:0;right:0;height:4px;width:0%;z-index:999;opacity:0;border-radius:0 3px 3px 0;pointer-events:none;';
+    document.body.appendChild(bar);
   }
-  const spinner=ov.querySelector('#ptr-spinner');
-  const label=ov.querySelector('#ptr-label');
+  // Glow element behind bar
+  let glow=document.getElementById('ptr-glow');
+  if(!glow){
+    glow=document.createElement('div');
+    glow.id='ptr-glow';
+    glow.style.cssText='position:fixed;top:0;left:0;right:0;height:12px;z-index:998;opacity:0;pointer-events:none;filter:blur(6px);';
+    document.body.appendChild(glow);
+  }
 
-  function setSpinnerColor(acc){
-    spinner.style.background=acc;
-    spinner.style.color='#fff';
-    spinner.querySelector('svg').style.stroke='#fff';
+  function setColor(acc){
+    bar.style.background=acc;
+    glow.style.background=acc;
   }
 
   c.addEventListener('touchstart',e=>{
     if(c.scrollTop!==0||refreshing)return;
-    sy=e.touches[0].clientY;pulling=true;triggered=false;pct=0;
+    sy=e.touches[0].clientY;pulling=true;triggered=false;
   },{passive:true});
 
   c.addEventListener('touchmove',e=>{
     if(!pulling||refreshing)return;
     const dy=e.touches[0].clientY-sy;
-    if(dy<=0||c.scrollTop>0){pulling=false;ov.style.opacity='0';return;}
+    if(dy<=0||c.scrollTop>0){pulling=false;bar.style.opacity='0';glow.style.opacity='0';return;}
     const acc=TABS[tabIdx].accent||'#0ea5e9';
-    setSpinnerColor(acc);
-    pct=Math.min(dy/90,1);
-    // Slide content down slightly
-    c.style.transition='none';
-    c.style.transform=`translate3d(0,${Math.min(dy*0.3,40)}px,0)`;
-    ov.style.opacity=Math.min(pct*1.4,1);
-    ov.style.backdropFilter=`blur(${pct*8}px)`;
-    ov.style.webkitBackdropFilter=`blur(${pct*8}px)`;
-    spinner.style.transform=`rotate(${dy*2}deg) scale(${0.7+pct*0.3})`;
-    label.textContent=pct>=1?'Release to refresh':'Pull to refresh';
-    if(pct>=1&&!triggered){triggered=true;haptic(14);}
+    setColor(acc);
+    const p=Math.min(dy/80*65,65);
+    bar.style.transition='none';glow.style.transition='none';
+    bar.style.width=p+'%';bar.style.opacity='1';
+    glow.style.width=p+'%';glow.style.opacity='0.5';
+    if(p>=60&&!triggered){triggered=true;haptic(14);}
   },{passive:true});
 
   c.addEventListener('touchend',async()=>{
     if(!pulling)return;
     pulling=false;
     if(!triggered){
-      c.style.transition='transform .3s cubic-bezier(.32,.72,.18,1)';
-      c.style.transform='';
-      ov.style.opacity='0';
-      setTimeout(()=>{c.style.transition='';c.style.transform='';},320);
+      bar.style.transition='opacity .3s,width .3s';glow.style.transition='opacity .3s';
+      bar.style.opacity='0';glow.style.opacity='0';
       return;
     }
     refreshing=true;
-    haptic([8,60,8]);
-    label.textContent='Refreshing…';
-    c.style.transition='transform .25s cubic-bezier(.32,.72,.18,1)';
-    c.style.transform='translate3d(0,44px,0)';
-    ov.style.opacity='1';
-    // Start spinning
-    spinner.style.transition='transform .3s ease';
-    spinner.style.transform='rotate(0deg) scale(1)';
-    spinner.style.animation='ptr-spin .7s linear infinite';
-
+    // Race to 85% with a shimmering pulse
+    bar.style.transition='width .7s cubic-bezier(.4,0,.2,1)';
+    glow.style.transition='width .7s cubic-bezier(.4,0,.2,1)';
+    bar.style.width='85%';glow.style.width='85%';
+    bar.style.animation='ptr-pulse 1s ease infinite';
     const t0=Date.now();
     try{
       const d=await fbRead();
@@ -603,24 +590,20 @@ function initPullRefresh(){
       lastTs=d.updatedAt;cacheState();setOffline(false);
     }catch(e2){}
     const elapsed=Date.now()-t0;
-    if(elapsed<1000)await sleep(1000-elapsed);
-
-    label.textContent='Done ✓';
-    spinner.style.animation='none';
-    spinner.style.transform='scale(1.15)';
-    haptic(12);
+    if(elapsed<900)await sleep(900-elapsed);
     renderContent();renderTabs();
-    await sleep(500);
-    c.style.transition='transform .4s cubic-bezier(.32,.72,.18,1)';
-    c.style.transform='';
-    ov.style.transition='opacity .35s ease';
-    ov.style.opacity='0';
-    setTimeout(()=>{
-      c.style.transition='';c.style.transform='';
-      spinner.style.transform='';
-      ov.style.transition='opacity .2s';
-      refreshing=false;
-    },420);
+    // Slam to 100%
+    bar.style.animation='none';
+    bar.style.transition='width .15s ease';glow.style.transition='width .15s ease';
+    bar.style.width='100%';glow.style.width='100%';
+    await sleep(160);
+    // Flash bright then fade
+    bar.style.transition='opacity .5s ease';glow.style.transition='opacity .5s ease';
+    bar.style.opacity='0';glow.style.opacity='0';
+    await sleep(520);
+    bar.style.width='0%';bar.style.transition='none';
+    glow.style.width='0%';glow.style.transition='none';
+    refreshing=false;
   },{passive:true});
 }
 function buildMsgs(){const acc=TABS[2].accent,me=getMem(member);const notices=state.notices||[];const noticeBlock=!notices.length&&!showNoticeCompose?'':(notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span><button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span>${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}</div>${showNoticeCompose?noticeCompose():''}</div>`);const feed=state.notes.length===0?`<div class="empty"><div class="empty-icon">${iconSvg('notes',24)}</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`:[...state.notes].sort((a,b)=>((b.type==='poll'&&b.pinned)?1:0)-((a.type==='poll'&&a.pinned)?1:0)).map(n=>{const auth=getMem(n.author),isMe=n.author===member;if(n.type==='poll')return renderPollBubble(n,auth,isMe);const rx=n.reactions||{};const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');return`<div class="nwrap ${isMe?'mine':'theirs'}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div><div class="nbubble ${isMe?'mine':'theirs'}" style="background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}"><div class="ntext">${esc(n.text)}</div></div><div class="rbar" id="rb${n.id}">${rxH}<button class="radd" onclick="showPicker(event,'${n.id}')">+</button></div>${isMe?`<button class="ndel" onclick="delNote('${n.id}')">Delete</button>`:''}</div>`;}).join('');const composeSection=showNoticeCompose&&!notices.length?'':`<div class="msg-compose" style="border-top-color:${acc}"><textarea class="msg-ta" id="ni" placeholder="Message the family…" style="caret-color:${acc}"></textarea><div class="msg-ft"><div class="msg-as"><div class="av" style="width:20px;height:20px;font-size:8px;color:${me.color};background:${me.color}18;border:1.5px solid ${me.color}44;border-radius:28%;flex-shrink:0">${me.initials}</div><span>as</span><b style="color:${me.color};margin-left:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(member)}</b></div><div class="msg-actions"><button class="msg-tool-btn" onclick="showPollCompose=!showPollCompose;renderContent()" title="Create poll">${iconSvg('poll',14)}</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div></div></div>${showPollCompose?buildPollCompose():''}`;return`${notifBar()}${noticeBlock}${composeSection}<div class="msg-feed">${feed}</div><div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;}
