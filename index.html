@@ -389,7 +389,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.5.2';
+const VER='v4.5.3';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -487,13 +487,15 @@ function rItem(it,isDone){const m=getMem(it.addedBy),u=it.urgency!=null?URGENCY[
 function bindSwipe(outer){
   const wrap=outer.querySelector('.swipe-wrap'),item=outer.querySelector('.item'),bg=outer.querySelector('.swipe-delete-bg');
   if(!wrap||!item)return;
-  const SHORT=55; // px - below this = tab switch, above = delete
-  let sx=0,sy=0,cx=0,locked=null,gone=false,deleteMode=false;
+  const DELETE_THRESHOLD=70; // px to commit delete
+  const TAB_THRESHOLD=35;    // px for short swipe = tab switch
+  const LOCK_THRESHOLD=8;    // px before we decide direction
+  let sx=0,sy=0,cx=0,locked=null,gone=false,t0=0;
 
   item.addEventListener('touchstart',e=>{
     if(gone)return;
     sx=e.touches[0].clientX;sy=e.touches[0].clientY;
-    cx=0;locked=null;deleteMode=false;
+    cx=0;locked=null;t0=Date.now();
     item.style.transition='none';
   },{passive:true});
 
@@ -501,32 +503,45 @@ function bindSwipe(outer){
     if(gone||locked==='v')return;
     const dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
     const adx=Math.abs(dx),ady=Math.abs(dy);
+    // Direction decision — needs clear horizontal movement
     if(locked===null){
-      if(adx<5&&ady<5)return;
-      if(adx>ady*2&&dx<0)locked='h';
+      if(adx<LOCK_THRESHOLD&&ady<LOCK_THRESHOLD)return;
+      if(adx>ady*1.8)locked='h';
       else{locked='v';return;}
     }
-    // Only enter delete mode once swipe exceeds SHORT threshold
-    if(!deleteMode){
-      if(adx>=SHORT){deleteMode=true;}
-      else return; // wait — don't move item yet, don't prevent default yet
+    // Only move item if going left AND past tab threshold
+    if(dx>=0||adx<TAB_THRESHOLD){
+      // Don't move item yet — could still be a short tab swipe
+      return;
     }
     e.preventDefault();
     cx=Math.max(dx,-wrap.offsetWidth*0.82);
     item.style.transform=`translate3d(${cx}px,0,0)`;
-    if(bg){const p=Math.min(adx/80,1);bg.style.opacity=p;bg.style.width=Math.max(80,adx)+'px';}
+    if(bg){const p=Math.min(adx/100,1);bg.style.opacity=p;bg.style.width=Math.max(80,adx*0.9)+'px';}
   },{passive:false});
 
-  const release=()=>{
+  const release=e=>{
     if(gone)return;
-    if(locked==='h'&&!deleteMode){
-      // Short swipe on item → trigger tab change
-      locked=null;
-      const dx=item._lastDx||0;
-      if(tabIdx<TABS.length-1)setTab(tabIdx+1);
+    if(locked!=='h'){locked=null;return;}
+    const totalDx=e?e.changedTouches[0].clientX-sx:cx;
+    const adx=Math.abs(totalDx);
+    const elapsed=Date.now()-t0;
+    locked=null;
+
+    // Pure tap (tiny movement, fast) — do nothing
+    if(adx<8&&elapsed<200){
       return;
     }
-    if(locked!=='h')return;
+    // Short swipe = tab change
+    if(adx<TAB_THRESHOLD||(adx<DELETE_THRESHOLD&&elapsed<250)){
+      if(totalDx<0&&tabIdx<TABS.length-1)setTab(tabIdx+1);
+      else if(totalDx>0&&tabIdx>0)setTab(tabIdx-1);
+      // Snap item back in case it moved slightly
+      item.style.transition='transform .2s ease';item.style.transform='';
+      if(bg){bg.style.opacity='0';}
+      return;
+    }
+    // Long swipe = delete if past delete threshold
     if(cx<=-wrap.offsetWidth*0.35){
       gone=true;haptic([8,30,12]);
       item.style.transition='transform .2s ease,opacity .15s ease';
@@ -545,14 +560,11 @@ function bindSwipe(outer){
       cx=0;
     }
   };
-  item.addEventListener('touchend',e=>{
-    item._lastDx=e.changedTouches[0].clientX-sx;
-    release();
-  });
+  item.addEventListener('touchend',release);
   item.addEventListener('touchcancel',()=>{
-    if(gone||locked!=='h')return;
+    if(gone)return;locked=null;
     item.style.transition='transform .3s ease';item.style.transform='';
-    if(bg){bg.style.opacity='0';}cx=0;deleteMode=false;
+    if(bg){bg.style.opacity='0';}cx=0;
   });
 }
 function initPullRefresh(){
