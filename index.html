@@ -4,7 +4,7 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
-  CURRENT VERSION: v4.5.5
+  CURRENT VERSION: v4.5.6
   (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
    THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
    Do NOT infer the version from the changelog below — it can lag if
@@ -68,6 +68,15 @@
      this comment block
 
   CHANGELOG:
+  v4.5.6 - Fixed self-notifications: when a family member switched
+            login (or someone else used your device, then you logged
+            back in) without reloading, the Firebase subscription
+            record kept the OLD member name, so the relay's
+            self-exclusion filter didn't match and the device pinged
+            on its own user's actions. selectMember now re-PUTs the
+            subscription with the current member whenever push
+            permission is already granted, so the FB record always
+            reflects who is actually logged in.
   v4.5.5 - Fixed Notify on Deploy GitHub Action that had been silently
             failing on every push (its grep matched both the example
             'vX.X.X' in the rules section and the real const VER,
@@ -408,7 +417,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.5.5';
+const VER='v4.5.6';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -455,7 +464,7 @@ function queueNotif(type,who,text){notifBatch.push({type,who,text});if(notifTime
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
 function doLogout(){member=null;renderLogin();showScreen('login');}
 function renderLogin(){const g=document.getElementById('mgrid');g.innerHTML=MEMBERS.map(m=>`<button class="mbtn" id="mb${m.initials}" onclick="selectMember('${esc(m.name)}')"><div class="av" style="width:50px;height:50px;background:${m.color}18;border:2px solid ${m.color}55;font-size:20px;color:${m.color};border-radius:28%">${m.initials}</div><span class="mname" style="color:${m.color}">${esc(m.name)}</span></button>`).join('');MEMBERS.forEach(m=>{const b=document.getElementById('mb'+m.initials);if(!b)return;const on=()=>{b.style.borderColor=m.color;b.style.background=m.color+'10';b.style.boxShadow=`0 4px 20px ${m.color}22`;b.querySelector('.av').style.transform='scale(1.1)';};const off=()=>{b.style.borderColor='';b.style.background='';b.style.boxShadow='';b.querySelector('.av').style.transform='';};b.addEventListener('mouseenter',on);b.addEventListener('mouseleave',off);b.addEventListener('touchstart',on,{passive:true});b.addEventListener('touchend',()=>setTimeout(off,260));});}
-function selectMember(name){member=name;haptic(10);localStorage.setItem('cfh_member',name);const m=getMem(name);lastReadNotes=parseInt(localStorage.getItem('cfh_read_'+name)||'0');const ha=document.getElementById('hav'),hn=document.getElementById('hname'),hicon=document.getElementById('hicon');ha.style.cssText=`width:22px;height:22px;border-radius:7px;background:${m.color}20;border:1.5px solid ${m.color}55;font-size:9px;color:${m.color};font-weight:800`;ha.textContent=m.initials;hn.textContent=name;hicon.style.background=`linear-gradient(145deg,${m.color},${m.color}88)`;const card=document.querySelector('.login-card');if(card){card.style.transition='opacity .2s ease,transform .2s ease';card.style.opacity='0';card.style.transform='scale(.95) translateY(-10px)';}setTimeout(()=>{renderTabs();renderContent();showScreen('app');const c=document.getElementById('content');c.style.transition='none';c.style.opacity='0';c.style.transform='translateY(12px)';requestAnimationFrame(()=>requestAnimationFrame(()=>{c.style.transition='opacity .28s ease,transform .28s ease';c.style.opacity='1';c.style.transform='none';}));if(isStandalone()&&'Notification' in window&&Notification.permission==='default')setTimeout(()=>subscribePush().then(ok=>ok&&renderContent()),1500);},200);}
+function selectMember(name){member=name;haptic(10);localStorage.setItem('cfh_member',name);const m=getMem(name);lastReadNotes=parseInt(localStorage.getItem('cfh_read_'+name)||'0');const ha=document.getElementById('hav'),hn=document.getElementById('hname'),hicon=document.getElementById('hicon');ha.style.cssText=`width:22px;height:22px;border-radius:7px;background:${m.color}20;border:1.5px solid ${m.color}55;font-size:9px;color:${m.color};font-weight:800`;ha.textContent=m.initials;hn.textContent=name;hicon.style.background=`linear-gradient(145deg,${m.color},${m.color}88)`;const card=document.querySelector('.login-card');if(card){card.style.transition='opacity .2s ease,transform .2s ease';card.style.opacity='0';card.style.transform='scale(.95) translateY(-10px)';}setTimeout(()=>{renderTabs();renderContent();showScreen('app');const c=document.getElementById('content');c.style.transition='none';c.style.opacity='0';c.style.transform='translateY(12px)';requestAnimationFrame(()=>requestAnimationFrame(()=>{c.style.transition='opacity .28s ease,transform .28s ease';c.style.opacity='1';c.style.transform='none';}));if('Notification' in window){if(isStandalone()&&Notification.permission==='default')setTimeout(()=>subscribePush().then(ok=>ok&&renderContent()),1500);else if(Notification.permission==='granted')setTimeout(()=>initPush(),200);}},200);}
 function renderTabs(){const acc=TABS[tabIdx].accent;document.getElementById('mhdr').style.borderBottomColor=acc;const unread=state.notes.some(n=>n.ts>lastReadNotes&&n.author!==member);const sc=state.shop.filter(x=>!x.done).length,tc=state.todo.filter(x=>!x.done).length;let html=TABS.map((t,i)=>{const active=tabIdx===i,cnt=i===0?sc:i===1?tc:0,hasUnread=i===2&&unread&&tabIdx!==2;return`<button class="tab-btn" onclick="setTab(${i})" style="color:${active?t.accent:'var(--muted)'};border-bottom-color:${active?t.accent:'transparent'};${active?`background:${t.accent}0c`:''}"><span class="tab-icn">${t.icon}</span>${esc(t.label)}${cnt>0?`<span class="tab-cnt" style="background:${active?t.accent+'22':'var(--surf2)'};color:${active?t.accent:'var(--muted)'};border:1px solid ${active?t.accent+'44':'var(--brd)'}">${cnt}</span>`:''}${hasUnread?`<span style="width:7px;height:7px;background:#ef4444;border-radius:50%;display:inline-block;margin-left:1px;flex-shrink:0"></span>`:''}</button>`;}).join('');document.getElementById('tabs').innerHTML=html;const as=document.getElementById('acc-strip');if(as)as.style.background=acc;}
 function cancelPull(){const bar=document.getElementById("ptr-bar"),glow=document.getElementById("ptr-glow"),c=document.getElementById("content");if(bar){bar.style.transition="none";bar.style.opacity="0";bar.style.transform="scaleX(0)";}if(glow){glow.style.transition="none";glow.style.opacity="0";}if(c){c.style.transition="transform .3s ease";c.style.transform="";}ptrPulling=false;}
 async function setTab(i){
