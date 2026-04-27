@@ -4,6 +4,13 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
+  CURRENT VERSION: v4.5.4
+  (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
+   THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
+   Do NOT infer the version from the changelog below — it can lag if
+   entries are missed. If you need to be 100% sure, also grep
+   `const VER` in this file; the action keeps them in sync.)
+
   APP OVERVIEW:
   - Single-file PWA (index.html) served via GitHub Pages
   - Firebase Realtime DB: https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app
@@ -61,6 +68,11 @@
      this comment block
 
   CHANGELOG:
+  v4.5.4 - Added auto-synced "CURRENT VERSION" marker at the top of
+            this comment block (kept in sync with const VER by
+            .github/workflows/sync-version.yml) so AI assistants always
+            recognise the actual current version instead of inferring
+            it from a possibly-stale changelog.
   v4.5.0 - Auto "What's New" overlay reads changelog from this comment
             block (no extra constants to maintain), GitHub Action sends
             push notification to all subscribers the instant a deploy
@@ -389,7 +401,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.5.3';
+const VER='v4.5.4';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];

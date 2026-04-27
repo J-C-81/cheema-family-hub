@@ -1,0 +1,68 @@
+name: Sync version marker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Sync CURRENT VERSION marker with const VER
+        run: |
+          set -euo pipefail
+
+          VER=$(grep -oE "^const VER='v[0-9]+\.[0-9]+\.[0-9]+'" index.html \
+                | head -1 \
+                | grep -oE "v[0-9]+\.[0-9]+\.[0-9]+")
+
+          if [ -z "${VER:-}" ]; then
+            echo "ERROR: could not find 'const VER=...' in index.html"
+            exit 1
+          fi
+
+          echo "Found const VER = $VER"
+
+          MARKER=$(grep -oE "^  CURRENT VERSION: v[0-9]+\.[0-9]+\.[0-9]+" index.html \
+                   | head -1 \
+                   | grep -oE "v[0-9]+\.[0-9]+\.[0-9]+" || true)
+
+          if [ -z "${MARKER:-}" ]; then
+            echo "ERROR: could not find 'CURRENT VERSION: vX.Y.Z' marker in index.html"
+            exit 1
+          fi
+
+          echo "Found CURRENT VERSION marker = $MARKER"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ "$VER" = "$MARKER" ]; then
+            echo "Marker already in sync, no commit needed."
+          else
+            echo "Mismatch — updating marker $MARKER -> $VER"
+            sed -i -E "s|^  CURRENT VERSION: v[0-9]+\.[0-9]+\.[0-9]+|  CURRENT VERSION: $VER|" index.html
+            git add index.html
+            git commit -m "sync: CURRENT VERSION marker -> $VER [skip ci]"
+            git push
+          fi
+
+          # Always ensure the version tag exists for the current VER.
+          if git rev-parse "$VER" >/dev/null 2>&1; then
+            echo "Tag $VER already exists, skipping."
+          else
+            echo "Creating tag $VER"
+            git tag "$VER"
+            git push origin "$VER"
+          fi
