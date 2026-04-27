@@ -4,7 +4,7 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
-  CURRENT VERSION: v4.5.6
+  CURRENT VERSION: v4.5.7
   (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
    THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
    Do NOT infer the version from the changelog below — it can lag if
@@ -68,6 +68,9 @@
      this comment block
 
   CHANGELOG:
+  v4.5.7 - Backfilled v4.5.1, v4.5.2, v4.5.3 entries below that
+            had been missed at the time, so the changelog now matches
+            the git tag history.
   v4.5.6 - Fixed self-notifications: when a family member switched
             login (or someone else used your device, then you logged
             back in) without reloading, the Firebase subscription
@@ -89,11 +92,21 @@
             .github/workflows/sync-version.yml) so AI assistants always
             recognise the actual current version instead of inferring
             it from a possibly-stale changelog.
+  v4.5.3 - Tap on item does nothing; short horizontal swipe on a row
+            switches tabs (in the correct direction); long swipe still
+            deletes — disambiguating the gesture overlap.
+  v4.5.2 - Short swipe on an item switches tabs, long swipe deletes
+            (replacing the previous all-or-nothing swipe behaviour).
+  v4.5.1 - Fixed pull-to-refresh accidentally firing on tab swipe,
+            item swipe taking priority over scroll, and pull state
+            not cancelling when the active tab changed.
   v4.5.0 - Auto "What's New" overlay reads changelog from this comment
             block (no extra constants to maintain), GitHub Action sends
             push notification to all subscribers the instant a deploy
             goes live, dramatically enhanced pull-to-refresh with
             bigger scale, extra haptic bursts and quadruple flash finish
+  v4.3.1 - Fixed swipe-to-delete (no longer conflicts with scrolling),
+            new pull-to-refresh: arc spinner with pull/release/done states
   v4.3.0 - Real slide transition between tabs (cloned ghost pane),
             longer pull-to-refresh (1400ms min) with smoother spring,
             reworked swipe-to-delete: axis-lock so it no longer fights
@@ -108,14 +121,13 @@
             supported this; client was not sending it), batch-add
             notification debounce extended to 8s so rapid adds group
             into a single push, keyboard focus hardened in Messages.
-  v4.3.1 - Fixed swipe-to-delete (no longer conflicts with scrolling),
-            new pull-to-refresh: arc spinner with pull/release/done states
   v4.2.1 - Restored Claude Code version: filter sheet, SVG icons,
             light theme default, correct dark mode (:root.dark),
             pull-to-refresh (900ms min), undo tick (4.5s toast),
             unread dot on Messages, notice board, polls, item photos,
             emoji reactions, offline mode, PWA manifest, sw.js,
             keyboard stays up in Messages when sending
+
 ================================================================
 -->
 <!DOCTYPE html>
@@ -417,7 +429,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.5.6';
+const VER='v4.5.7';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
