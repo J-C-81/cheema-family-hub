@@ -1,4 +1,4 @@
-const CACHE='cfh-v4';
+const CACHE='cfh-v4.5';
 self.addEventListener('install',()=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil(clients.claim()));
 

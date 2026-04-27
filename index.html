@@ -29,7 +29,8 @@
   - selectMember(name)  — logs in as a family member
   - haptic(pattern)     — triggers haptic feedback
   - delItem(id)         — deletes item from current tab
-  - checkVersionUpdate()— shows update popup if version changed
+  - checkVersionUpdate()— shows "What's New" popup (auto-parses changelog)
+  - showUpdatePopup(prev)— fetches page source, extracts changelog for VER
   - showInstallPopup()  — first-open install-to-home-screen guide
   - sendPushNotif(t,b,addedBy) — sends push, excludes sender's devices
 
@@ -60,6 +61,11 @@
      this comment block
 
   CHANGELOG:
+  v4.5.0 - Auto "What's New" overlay reads changelog from this comment
+            block (no extra constants to maintain), GitHub Action sends
+            push notification to all subscribers the instant a deploy
+            goes live, dramatically enhanced pull-to-refresh with
+            bigger scale, extra haptic bursts and quadruple flash finish
   v4.3.0 - Real slide transition between tabs (cloned ghost pane),
             longer pull-to-refresh (1400ms min) with smoother spring,
             reworked swipe-to-delete: axis-lock so it no longer fights
@@ -383,7 +389,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.4.7';
+const VER='v4.5.0';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -572,7 +578,7 @@ function initPullRefresh(){
     setPct(pct);
     if(pct>=1&&!triggered){
       triggered=true;
-      haptic([10,60,10,40,15]);
+      haptic([15,80,15,60,20,40,15]);
       // Flash effect when ready
       bar.style.transition='opacity .08s';
       bar.style.opacity='0.3';
@@ -590,10 +596,10 @@ function initPullRefresh(){
       setTimeout(()=>{c.style.transition='';},320);return;
     }
     ptrRefreshing=true;
-    haptic([8,80,12,60,20]);
+    haptic([12,100,15,80,25,60,20]);
     // Lock content down
     c.style.transition='transform .22s ease';
-    c.style.transform='translate3d(0,64px,0)';
+    c.style.transform='translate3d(0,72px,0) scale(0.985)';
     // Slam bar to full width
     bar.style.transition='transform .12s ease';setPct(1);
     glow.style.transition='transform .12s ease';
@@ -629,13 +635,13 @@ function initPullRefresh(){
 
     // Triple flash finish
     bar.style.animation='none';
-    for(let i=0;i<3;i++){
+    for(let i=0;i<4;i++){
       bar.style.opacity='0.2';await sleep(80);
       bar.style.opacity='1';await sleep(80);
     }
     haptic(15);
     // Snap content back then fade bar
-    c.style.transition='transform .38s cubic-bezier(.32,.72,.18,1)';c.style.transform='';
+    c.style.transition='transform .3s cubic-bezier(.34,1.56,.64,1)';c.style.transform='translate3d(0,-6px,0)';await sleep(180);c.style.transition='transform .25s ease';c.style.transform='';
     await sleep(180);
     bar.style.transition='opacity .5s ease,transform .4s ease';
     bar.style.opacity='0';glow.style.transition='opacity .4s ease';glow.style.opacity='0';
@@ -684,15 +690,24 @@ function checkVersionUpdate(){
   const last=localStorage.getItem('cfh-last-ver');
   if(last!==VER){
     localStorage.setItem('cfh-last-ver',VER);
-    if(last){setTimeout(showUpdatePopup,900);}
+    if(last){setTimeout(()=>showUpdatePopup(last),900);}
   }
 }
-function showUpdatePopup(){
+async function showUpdatePopup(prevVer){
   if(document.querySelector('.app-popup-back'))return;
-  const notes=`The app has been updated to <b>${VER}</b>. Pull down to refresh and get the latest.`;
+  let notes='';
+  try{
+    const r=await fetch(location.href,{cache:'no-store'});
+    const html=await r.text();
+    const re=new RegExp(VER.replace(/[.]/g,'\\.')+'\\s*-\\s*([\\s\\S]*?)(?=\\n  v\\d|={3,})');
+    const m=html.match(re);
+    if(m)notes=m[1].replace(/\n\s{10,}/g,' ').trim();
+  }catch(e){}
+  if(!notes)notes='New improvements and fixes';
+  const bullets=notes.split(/,\s*(?=[A-Z"])/).map(s=>s.trim()).filter(Boolean).map(s=>'• '+s).join('<br>');
   const back=document.createElement('div');
   back.className='app-popup-back';
-  back.innerHTML=`<div class="app-popup"><div class="app-popup-ico">✨</div><div class="app-popup-title">Updated</div><div class="app-popup-sub">Now on ${VER}</div><div class="app-popup-body">${notes}</div><button class="app-popup-btn" onclick="this.closest('.app-popup-back').remove()">Got it</button></div>`;
+  back.innerHTML=`<div class="app-popup"><div class="app-popup-ico">✨</div><div class="app-popup-title">What's New</div><div class="app-popup-sub">${esc(prevVer)} → ${VER}</div><div class="app-popup-body">${bullets}</div><button class="app-popup-btn" onclick="this.closest('.app-popup-back').remove()">Got it</button></div>`;
   document.body.appendChild(back);
   requestAnimationFrame(()=>back.classList.add('open'));
 }

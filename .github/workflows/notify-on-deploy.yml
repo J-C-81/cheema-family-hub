@@ -10,14 +10,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get version
+      - name: Extract version and changelog from comment block
         id: ver
         run: |
           VER=$(grep -o "const VER='[^']*'" index.html | grep -o "'[^']*'" | tr -d "'")
           echo "version=$VER" >> $GITHUB_OUTPUT
 
-      - name: Send push notification
+          # Grab this version's changelog entry from the HTML comment block
+          NOTES=$(sed -n "/^  ${VER//./\\.} - /,/^  v[0-9]/{ /^  v[0-9]/!p; /^  ${VER//./\\.}/p; }" index.html \
+            | sed 's/^  *//g' \
+            | tr '\n' ' ' \
+            | sed "s/^${VER//./\\.} - //" \
+            | sed 's/  */ /g' \
+            | head -c 200)
+          echo "notes=${NOTES}" >> $GITHUB_OUTPUT
+
+      - name: Send push notification with changelog
         run: |
+          BODY="${{ steps.ver.outputs.notes }}"
+          if [ -z "$BODY" ]; then
+            BODY="Open the app to see what's new"
+          fi
           curl -s -X POST https://cfh-push.jivancheemalfc.workers.dev \
             -H "Content-Type: application/json" \
-            -d "{\"title\":\"Family Hub Updated 🚀\",\"body\":\"Now on ${{ steps.ver.outputs.version }} — open the app to see what's new\",\"addedBy\":\"__system__\",\"notifyAll\":true}"
+            -d "{\"title\":\"Family Hub updated to ${{ steps.ver.outputs.version }}\",\"body\":\"$BODY\",\"addedBy\":\"__system__\",\"notifyAll\":true}"
