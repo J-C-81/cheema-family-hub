@@ -1,0 +1,55 @@
+name: GC stale subscriptions
+
+# Once a day, prune push subscriptions whose `refreshedAt` (set by the client
+# in initPush from v4.5.8 onwards) is older than 30 days. Subs without a
+# `refreshedAt` field (i.e. recorded before v4.5.8) are left untouched, so
+# nothing existing breaks the first time this runs.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune subs with refreshedAt older than 30 days
+        run: |
+          set -euo pipefail
+          FB="https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions"
+          curl -sf "$FB.json" -o /tmp/subs.json
+          if [ ! -s /tmp/subs.json ] || [ "$(cat /tmp/subs.json)" = "null" ]; then
+            echo "No subscriptions, nothing to do."
+            exit 0
+          fi
+          python3 - <<PY
+          import json, time, urllib.request
+          subs = json.load(open('/tmp/subs.json'))
+          if not isinstance(subs, dict):
+              print('Subscriptions are not a dict, skipping.')
+              raise SystemExit(0)
+          now_ms = int(time.time() * 1000)
+          cutoff = now_ms - 30 * 86400 * 1000
+          fb = "$FB"
+          stale, kept_no_ts, kept_fresh = [], 0, 0
+          for k, v in subs.items():
+              if not isinstance(v, dict):
+                  continue
+              ts = v.get('refreshedAt')
+              if not isinstance(ts, (int, float)):
+                  kept_no_ts += 1
+                  continue
+              if ts < cutoff:
+                  stale.append(k)
+              else:
+                  kept_fresh += 1
+          for k in stale:
+              req = urllib.request.Request(f"{fb}/{k}.json", method='DELETE')
+              urllib.request.urlopen(req).read()
+              print(f"deleted {k}")
+          print(f"summary: deleted={len(stale)}, kept_fresh={kept_fresh}, kept_no_refreshedAt={kept_no_ts}")
+          PY
