@@ -16,11 +16,14 @@ self.addEventListener('push',e=>{
     try{body=e.data.text();}catch(e2){}
   }
   
+  // iOS Safari aggressively dedupes notifications that share a tag, even with
+  // renotify:true — multiple rapid pushes collapse into a single silent one.
+  // Use a unique tag per notification so each one always rings/buzzes.
   const options={
     body,
     icon:'https://j-c-81.github.io/cheema-family-hub/icon.png',
     badge:'https://j-c-81.github.io/cheema-family-hub/icon.png',
-    tag:'cfh',
+    tag:'cfh-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
     renotify:true,
     requireInteraction:false,
     data:{url:'https://j-c-81.github.io/cheema-family-hub/'}
