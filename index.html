@@ -4,7 +4,7 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
-  CURRENT VERSION: v5.0.0
+  CURRENT VERSION: v5.0.1
   (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
    THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
    Do NOT infer the version from the changelog below — it can lag if
@@ -68,6 +68,22 @@
      this comment block
 
   CHANGELOG:
+  v5.0.1 - Firebase database security rules tightened. The DB
+            previously had wide-open ".read: true, .write: true"
+            rules, meaning anyone with the URL could DELETE the
+            entire family hub. New rules:
+              - /cheema: any write must include a non-null
+                updatedAt field (which fbWrite always sets), so
+                anonymous DELETE / and PUT null both fail with
+                "Permission denied" while normal saves continue
+                to work.
+              - /subscriptions/<key>: still writable so push
+                subscribe + worker cleanup keep working without
+                code changes.
+            No app-side change required; the existing fbWrite
+            already conforms. Subscription endpoints remain
+            publicly readable for now (low-severity vs the wipe
+            risk).
   v5.0.0 - Milestone bump in recognition of the substantial
             backend overhaul shipped across v4.5.8 → v4.5.10:
             iPhone push reliability fixed, lost-write race fixed
@@ -512,7 +528,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v5.0.0';
+const VER='v5.0.1';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
