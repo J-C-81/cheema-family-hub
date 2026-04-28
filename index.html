@@ -369,7 +369,9 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .ichk{width:22px;height:22px;border-radius:7px;border:1.5px solid;background:transparent;cursor:pointer;flex-shrink:0;padding:0;transition:all .18s var(--spring);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
 .ichk:active{transform:scale(.78)}
 .ibody{flex:1;min-width:0}
-.itext{font-size:14px;font-weight:500;color:var(--text);word-break:break-word;overflow-wrap:anywhere;line-height:1.4}
+.irow1{display:flex;align-items:flex-start;justify-content:space-between;gap:4px}
+.irow1-right{display:flex;align-items:center;gap:3px;flex-shrink:0}
+.itext{font-size:14px;font-weight:500;color:var(--text);word-break:break-word;overflow-wrap:anywhere;line-height:1.4;flex:1}
 .itext.struck{text-decoration:line-through;color:var(--sub)}
 .imeta{display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap}
 .icat{font-size:10px;font-weight:500;color:var(--muted);display:inline-flex;align-items:center;gap:3px;flex-shrink:0;margin-left:auto;opacity:.75}
@@ -528,7 +530,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v5.0.1';
+const VER='v5.0.2';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -623,7 +625,39 @@ function notifBar(){if(notifDismissed||!('Notification' in window))return'';if(N
 async function doEnableNotifs(){const ok=await subscribePush();notifDismissed=true;renderContent();if(ok&&swReg)swReg.showNotification('Notifications on',{body:"You'll get notified when the family adds something",icon:'/icon.png'});}
 function renderContent(){const c=document.getElementById('content'),acc=TABS[tabIdx].accent;if(tabIdx===2){c.innerHTML=buildMsgs();bindMsgEv();initTabSwipe();return;}const isS=tabIdx===0,list=isS?state.shop:state.todo;const sort=isS?shopSort:todoSort,urg=isS?shopUrg:todoUrg;const filters=isS?shopFilters:todoFilters;let filtered=filters.length===0?list:list.filter(i=>filters.includes(i.addedBy));if(isS&&shopCats.length)filtered=filtered.filter(i=>shopCats.includes(i.cat||''));const pending=sortList(filtered.filter(i=>!i.done),sort),done=sortList(filtered.filter(i=>i.done),sort);const notices=state.notices||[];const noticeHTML=notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notices</span></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:'';const urgBtns=URGENCY.map((u,i)=>`<button class="urg-btn" onclick="setUrg(${i})" style="border-color:${urg===i?u.color:'var(--brd)'};background:${urg===i?u.color+'18':'transparent'};color:${urg===i?u.color:'var(--muted)'}"><span class="udot" style="background:${urg===i?u.ring:'var(--brd)'}"></span>${u.label}</button>`).join('');const emptyIcon=isS?iconSvg('shop',24):iconSvg('todo',24);const pH=pending.length===0?`<div class="empty"><div class="empty-icon">${emptyIcon}</div><div class="empty-title">${list.length===0?(isS?'Shopping list is empty':'No tasks yet'):'All done'}</div>${list.length===0?'<div class="empty-sub">Tap above to add something</div>':''}</div>`:pending.map(it=>rItem(it,false)).join('');const dH=done.length===0?'':`<div class="done-sec"><div class="done-sep"></div><div class="done-hdr"><span class="done-ttl">Completed · ${done.length}</span><button class="clear-btn" onclick="clearDone()">Clear all</button></div>${done.map(it=>rItem(it,true)).join('')}</div>`;c.innerHTML=`${notifBar()}${noticeHTML}<div class="input-card"><div class="input-row"><input class="main-input" id="mi" placeholder="${isS?'Add to shopping…':'Add a task…'}" style="caret-color:${acc}" onkeydown="if(event.key==='Enter')addItem()"><button class="add-btn" onclick="addItem()" style="background:${acc}">Add</button></div><div class="urg-row"><span class="urg-lbl">Priority</span>${urgBtns}</div></div><div class="list-hdr"><span class="list-hdr-txt">${pending.length} remaining</span><button class="filter-trigger" onclick="openFilterSheet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>Filter &amp; Sort${hasActiveFilters()?'<span class="filter-dot"></span>':''}</button></div><div class="list-wrap">${pH}</div>${dH}<div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;if(shouldFocus){document.getElementById('mi')?.focus();shouldFocus=false;}document.querySelectorAll('.swipe-outer').forEach(bindSwipe);initTabSwipe();initPullRefresh();}
 function setCat(cid){if(tabIdx!==0)return;if(cid==='All'){shopCats=[];}else{const i=shopCats.indexOf(cid);if(i>=0)shopCats.splice(i,1);else shopCats.push(cid);}renderContent();if(filterSheetOpen)renderFilterSheetContent();}
-function rItem(it,isDone){const m=getMem(it.addedBy),u=it.urgency!=null?URGENCY[it.urgency]:URGENCY[0];const ci=CATS.find(c=>c.id===it.cat);const ub=`<span class="iurg" onclick="cycleUrg(event,'${it.id}')" style="color:${u.color}"><span class="udot" style="background:${u.ring};margin-right:2px"></span>${u.label}</span>`;const catTag=ci&&!isDone?`<span class="icat">${iconSvg('tag',10)}${ci.label}</span>`:'';const chk=`border-color:${m.color}55${isDone?`;background:${m.color}22;color:${m.color}`:''}`;const bord=isDone?`${u.color}44`:u.color;const isShop=tabIdx===0;const qty=Math.max(1,it.qty||1);const qtyStepper=isShop&&!isDone?`<span class="qty-step"><button class="qty-btn" onclick="setQty(event,'${it.id}',-1)"${qty<=1?' disabled':''}>−</button><span class="qty-val">${qty}</span><button class="qty-btn" onclick="setQty(event,'${it.id}',1)">+</button></span>`:'';const qtyBadge=isShop&&qty>1&&isDone?`<span class="iqty">×${qty}</span>`:'';const photoEl=it.photo?`<img class="item-photo" src="${it.photo}" onclick="viewPhoto('${it.photo}')">`:(isDone?'':`<button class="photo-btn" onclick="addPhoto('${it.id}')" title="Add photo">${iconSvg('camera',14)}</button>`);return`<div class="swipe-outer"><div class="swipe-wrap" data-id="${it.id}"><div class="swipe-delete-bg"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></div><div class="item${isDone?' done':''}" style="border-left-color:${bord}"><button class="ichk" style="${chk}" onclick="toggleItem('${it.id}')">${isDone?'✓':''}</button><div class="ibody"><div class="itext${isDone?' struck':''}">${esc(it.text)}</div><div class="imeta"><span class="iname" style="color:${m.color}">${esc(it.addedBy)}</span>${ub}<span class="itime">${isDone?`by ${esc(it.doneBy||'?')}`:timeAgo(it.ts)}</span>${qtyStepper}${qtyBadge}${catTag}</div></div>${photoEl}<button class="del-btn" onclick="delItem('${it.id}')">×</button></div></div></div>`;}
+function rItem(it,isDone){
+  const m=getMem(it.addedBy),u=it.urgency!=null?URGENCY[it.urgency]:URGENCY[0];
+  const ci=CATS.find(c=>c.id===it.cat);
+  const chk=`border-color:${m.color}55${isDone?`;background:${m.color}22;color:${m.color}`:''}`;
+  const bord=isDone?`${u.color}44`:u.color;
+  const isShop=tabIdx===0;
+  const qty=Math.max(1,it.qty||1);
+
+  // Row 1 right side: qty stepper (shopping, not done) OR qty badge (done)
+  const qtyEl=isShop&&!isDone
+    ?`<span class="qty-step"><button class="qty-btn" onclick="setQty(event,'${it.id}',-1)"${qty<=1?' disabled':''}>−</button><span class="qty-val">${qty}</span><button class="qty-btn" onclick="setQty(event,'${it.id}',1)">+</button></span>`
+    :isShop&&qty>1&&isDone?`<span class="iqty">×${qty}</span>`:'';
+
+  // Photo / camera
+  const photoEl=it.photo
+    ?`<img class="item-photo" src="${it.photo}" onclick="viewPhoto('${it.photo}')">`
+    :isDone?'':`<button class="photo-btn" onclick="addPhoto('${it.id}')" title="Add photo">${iconSvg('camera',14)}</button>`;
+
+  // Meta row: who added · urgency dot · time (or done-by)
+  const urgDot=`<span class="iurg" onclick="cycleUrg(event,'${it.id}')" style="color:${u.color}"><span class="udot" style="background:${u.ring}"></span>${u.label}</span>`;
+  const catTag=ci&&!isDone?`<span class="icat">${iconSvg('tag',10)}${ci.label}</span>`:'';
+  const timeEl=isDone?`<span class="itime">by ${esc(it.doneBy||'?')}</span>`:`<span class="itime">${timeAgo(it.ts)}</span>`;
+
+  return`<div class="swipe-outer"><div class="swipe-wrap" data-id="${it.id}"><div class="swipe-delete-bg"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></div><div class="item${isDone?' done':''}" style="border-left-color:${bord}">
+  <button class="ichk" style="${chk}" onclick="toggleItem('${it.id}')">${isDone?'✓':''}</button>
+  <div class="ibody">
+    <div class="irow1">
+      <span class="itext${isDone?' struck':''}">${esc(it.text)}</span>
+      <span class="irow1-right">${qtyEl}${photoEl}<button class="del-btn" onclick="delItem('${it.id}')">×</button></span>
+    </div>
+    <div class="imeta"><span class="iname" style="color:${m.color}">${esc(it.addedBy)}</span>${urgDot}${catTag}${timeEl}</div>
+  </div>
+</div></div></div>`;}
 function bindSwipe(outer){
   const wrap=outer.querySelector('.swipe-wrap'),item=outer.querySelector('.item'),bg=outer.querySelector('.swipe-delete-bg');
   if(!wrap||!item)return;
