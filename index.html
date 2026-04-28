@@ -4,7 +4,7 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
-  CURRENT VERSION: v4.5.10
+  CURRENT VERSION: v5.0.0
   (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
    THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
    Do NOT infer the version from the changelog below — it can lag if
@@ -68,6 +68,20 @@
      this comment block
 
   CHANGELOG:
+  v5.0.0 - Milestone bump in recognition of the substantial
+            backend overhaul shipped across v4.5.8 → v4.5.10:
+            iPhone push reliability fixed, lost-write race fixed
+            with read-merge-write save, polling architecture
+            rebuilt (cheap updatedAt-first poll + pauses while
+            backgrounded), service worker now caches the PWA shell
+            for true offline boot, daily subscription garbage
+            collection, dead Telegram config path removed, and
+            photos migrated out of Firebase into Workers KV via a
+            new /photo endpoint on the Cloudflare worker. The app
+            looks and behaves the same — this is a structural
+            re-baseline, not a redesign. (No code changes vs.
+            v4.5.10; this entry exists to make the major-bump
+            explicit in the changelog.)
   v4.5.10 - Photos no longer get crammed inline as base64 inside the
             Firebase data on every save. The Cloudflare worker now has
             a /photo upload endpoint backed by Workers KV; addPhoto
@@ -498,7 +512,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.5.10';
+const VER='v5.0.0';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
