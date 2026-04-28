@@ -68,6 +68,31 @@
      this comment block
 
   CHANGELOG:
+  v5.2.0 - Backend security hardening (no visible UX change):
+            (1) /subscriptions in Firebase is no longer publicly
+            readable. Before, anyone with the DB URL could list
+            every device's push endpoint; now reads of that path
+            require the database secret. Worker and the daily GC
+            workflow both authenticate via FB_AUTH (worker uses
+            a Cloudflare Workers Secret; GC workflow uses a
+            GitHub Actions secret). The /cheema path remains
+            readable so the app keeps working without changes.
+            (2) The VAPID web-push private key is no longer
+            hardcoded in the worker source — it lives in a
+            Cloudflare Workers Secret (VAPID_PRIV) and the
+            worker reads it via env. Same key as before, so all
+            existing push subscriptions keep working; the source
+            file just no longer contains the secret in
+            plaintext. (3) The push worker now refuses
+            unauthenticated callers. POST / and POST /photo only
+            accept requests where Origin is the PWA origin
+            (https://j-c-81.github.io), or where Authorization
+            is "Bearer <CFH_SYS_KEY>" (used by the deploy-notify
+            GitHub Action). Random scanners or anyone hitting
+            the worker URL without those now get 403 instead of
+            being able to spam the family with fake notifs. The
+            public photo GET endpoint stays open so existing
+            <img src> URLs keep loading.
   v5.1.1 - Partial revert of v5.1.0's item row rework based on
             user feedback: (1) the auto-detected category tag is
             back in the meta row with its previous text-only look
@@ -564,7 +589,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v5.1.1';
+const VER='v5.2.0';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];

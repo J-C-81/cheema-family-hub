@@ -24,7 +24,14 @@ jobs:
           echo "version=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Send push notification
+        env:
+          CFH_SYS_KEY: ${{ secrets.CFH_SYS_KEY }}
         run: |
+          if [ -z "${CFH_SYS_KEY:-}" ]; then
+            echo "ERROR: CFH_SYS_KEY secret not set on the repo." >&2
+            exit 1
+          fi
           curl -s -X POST https://cfh-push.jivancheemalfc.workers.dev \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${CFH_SYS_KEY}" \
             -d "{\"title\":\"Family Hub Updated 🚀\",\"body\":\"Now on ${{ steps.ver.outputs.version }} — open the app to see what's new\",\"addedBy\":\"__system__\",\"notifyAll\":true}"
