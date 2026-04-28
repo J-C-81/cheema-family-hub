@@ -4,7 +4,7 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
-  CURRENT VERSION: v4.5.9
+  CURRENT VERSION: v4.5.10
   (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
    THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
    Do NOT infer the version from the changelog below — it can lag if
@@ -68,6 +68,19 @@
      this comment block
 
   CHANGELOG:
+  v4.5.10 - Photos no longer get crammed inline as base64 inside the
+            Firebase data on every save. The Cloudflare worker now has
+            a /photo upload endpoint backed by Workers KV; addPhoto
+            still shows the captured image instantly (base64), then
+            uploads in the background and swaps the item's photo
+            field to a small URL on success. Old base64 photos keep
+            working unchanged. Result: every poll/save stays small
+            even as photos accumulate, and the live image is served
+            with year-long cache-control headers from the edge. No
+            visible change to how adding/viewing photos feels. Also a
+            small worker tidy: message bodies are no longer logged in
+            Cloudflare (only the title/who), so notification contents
+            don't sit in observability logs.
   v4.5.9 - Race-safe save: before writing the full state to Firebase,
             the client now re-reads remote and merges any concurrent
             additions from other devices by item id, so two people
@@ -485,7 +498,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v4.5.9';
+const VER='v4.5.10';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -769,7 +782,7 @@ function showPicker(e,nid){e.stopPropagation();document.querySelectorAll('.epick
 function closePicker(){document.querySelectorAll('.epicker').forEach(p=>p.remove());openPicker=null;}
 function toggleRx(nid,emoji){closePicker();haptic(8);state.notes=state.notes.map(n=>{if(n.id!==nid)return n;const rx={...(n.reactions||{})},who=[...(rx[emoji]||[])];const idx=who.indexOf(member);if(idx>=0)who.splice(idx,1);else who.push(member);if(!who.length)delete rx[emoji];else rx[emoji]=who;return{...n,reactions:rx};});renderContent();save();}
 function showUndoToast(msg,onUndo){document.querySelector('.undo-toast')?.remove();const t=document.createElement('div');t.className='undo-toast';t.innerHTML=`<span class="undo-txt">${msg}</span><button class="undo-btn" onclick="this.closest('.undo-toast')._undo()">Undo</button>`;t._undo=()=>{clearTimeout(undoTimer);t.remove();onUndo();};document.body.appendChild(t);undoTimer=setTimeout(()=>t.remove(),4500);}
-function addPhoto(itemId){const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.capture='environment';inp.onchange=e=>{const file=e.target.files[0];if(!file)return;const canvas=document.createElement('canvas'),img=new Image();img.onload=()=>{const MAX=320,ratio=Math.min(MAX/img.width,MAX/img.height,1);canvas.width=img.width*ratio;canvas.height=img.height*ratio;canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);const b64=canvas.toDataURL('image/jpeg',0.75);const k=tabIdx===0?'shop':'todo';state[k]=state[k].map(i=>i.id===itemId?{...i,photo:b64}:i);renderContent();save();};img.src=URL.createObjectURL(file);};inp.click();}
+function addPhoto(itemId){const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.capture='environment';inp.onchange=e=>{const file=e.target.files[0];if(!file)return;const canvas=document.createElement('canvas'),img=new Image();img.onload=()=>{const MAX=320,ratio=Math.min(MAX/img.width,MAX/img.height,1);canvas.width=img.width*ratio;canvas.height=img.height*ratio;canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);const b64=canvas.toDataURL('image/jpeg',0.75);const k=tabIdx===0?'shop':'todo';state[k]=state[k].map(i=>i.id===itemId?{...i,photo:b64}:i);renderContent();save();canvas.toBlob(async blob=>{if(!blob)return;try{const res=await fetch(PUSH_RELAY+'/photo',{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});if(!res.ok)return;const d=await res.json();if(d&&d.url){state[k]=state[k].map(i=>i.id===itemId&&i.photo===b64?{...i,photo:d.url}:i);renderContent();save();}}catch(err){}},'image/jpeg',0.75);};img.src=URL.createObjectURL(file);};inp.click();}
 function viewPhoto(b64){const m=document.createElement('div');m.className='photo-modal';m.innerHTML=`<img src="${b64}"><button class="photo-modal-close" onclick="this.parentElement.remove()">✕</button>`;m.onclick=e=>{if(e.target===m)m.remove();};document.body.appendChild(m);}
 function addItem(){const inp=document.getElementById('mi'),text=inp?.value.trim();if(!text)return;const isS=tabIdx===0,urg=isS?shopUrg:todoUrg,autoCat=isS?suggestCat(text):'';const it={id:genId(),text,urgency:urg,cat:autoCat,addedBy:member,done:false,ts:Date.now()};if(isS)it.qty=1;if(isS)state.shop=[it,...state.shop];else state.todo=[it,...state.todo];if(isS){shopUrg=0;}else{todoUrg=0;}inp.value='';shouldFocus=true;haptic(8);renderTabs();renderContent();save();queueNotif(isS?'shop':'todo',member,text);}
 function setQty(e,id,delta){if(e){e.stopPropagation();}haptic(6);state.shop=state.shop.map(i=>i.id!==id?i:{...i,qty:Math.max(1,(i.qty||1)+delta)});renderContent();save();}
