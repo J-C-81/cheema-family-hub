@@ -1,12 +1,16 @@
 name: Notify on Deploy
 
+# Fires AFTER the GitHub Pages deploy has finished successfully (so the
+# push notification arrives when the new version is actually live to
+# users), not on the upstream push event. Manual workflow_dispatch is
+# kept for testing / re-firing without needing a real deploy.
 on:
-  push:
-    branches: [main]
+  deployment_status:
   workflow_dispatch:
 
 jobs:
   notify:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'github-pages') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
