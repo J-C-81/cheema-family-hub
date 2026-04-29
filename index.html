@@ -68,6 +68,11 @@
      this comment block
 
   CHANGELOG:
+  v5.2.1 - Added workflow_dispatch trigger to notify-on-deploy.yml so
+            the deploy push-notification can be manually re-fired from
+            the GitHub Actions tab without needing a fresh push (useful
+            for verifying CFH_SYS_KEY config changes). No app behaviour
+            change.
   v5.2.0 - Backend security hardening (no visible UX change):
             (1) /subscriptions in Firebase is no longer publicly
             readable. Before, anyone with the DB URL could list
@@ -589,7 +594,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v5.2.0';
+const VER='v5.2.1';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];

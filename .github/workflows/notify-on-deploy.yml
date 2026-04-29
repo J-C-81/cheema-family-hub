@@ -3,6 +3,7 @@ name: Notify on Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   notify:
