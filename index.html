@@ -37,6 +37,9 @@
   - haptic(pattern)     — triggers haptic feedback
   - delItem(id)         — deletes item from current tab
   - checkVersionUpdate()— shows "What's New" popup (auto-parses changelog)
+  - retagOthers()       — on version change, re-runs suggestCat on shop
+                          items still tagged 'other' (catches items that
+                          fit a category added in a later release)
   - showUpdatePopup(prev)— fetches page source, extracts changelog for VER
   - showInstallPopup()  — first-open install-to-home-screen guide
   - sendPushNotif(t,b,addedBy) — sends push, excludes sender's devices
@@ -72,6 +75,13 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v5.4.1 - Auto-retag of "Other" items on every app update: shop
+            items currently tagged Other get re-evaluated against the
+            latest keyword list once on first boot of a new version,
+            and reclassified if anything matches now. Items that
+            still don't fit any category keep the Other tag. Picks
+            up retroactively for items that pre-date Cereal / Snacks
+            existing.
   v5.4.0 - Two new shopping categories: "Cereal" (cornflakes,
             Weetabix, oats, granola, muesli, etc.) and "Snacks"
             (sweets, chocolate, crisps, branded treats like Haribo /
@@ -653,7 +663,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v5.4.0';
+const VER='v5.4.1';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -965,9 +975,10 @@ function checkVersionUpdate(){
   const last=localStorage.getItem('cfh-last-ver');
   if(last!==VER){
     localStorage.setItem('cfh-last-ver',VER);
-    if(last){setTimeout(()=>showUpdatePopup(last),900);}
+    if(last){setTimeout(()=>showUpdatePopup(last),900);try{retagOthers();}catch(e){}}
   }
 }
+function retagOthers(){if(!state||!Array.isArray(state.shop)||!state.shop.length)return;let changed=false;state.shop=state.shop.map(it=>{if(it&&it.cat==='other'&&it.text){const n=suggestCat(it.text);if(n&&n!=='other'){changed=true;return{...it,cat:n};}}return it;});if(changed){renderContent();save();}}
 async function showUpdatePopup(prevVer){
   if(document.querySelector('.app-popup-back'))return;
   let notes='';
