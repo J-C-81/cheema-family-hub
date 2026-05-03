@@ -1,4 +1,4 @@
-const CACHE='cfh-v6-0-0';
+const CACHE='cfh-v6-1-0';
 const ASSETS=[
   '/cheema-family-hub/manifest.json',
   '/cheema-family-hub/icon.png',
@@ -58,13 +58,13 @@ self.addEventListener('push',e=>{
     try{body=e.data.text();}catch(e2){}
   }
 
-  // Supermarket mode: client sends a "🛒 ... shops" title which is treated as
-  // high-attention — sticky on Android (requireInteraction), stronger
-  // vibration, and a shared tag so a second tap from the same shopper
-  // replaces the previous notif instead of stacking. iOS Safari ignores
-  // most of these flags but still shows the title/body, which is enough
-  // because the 🛒 emoji and explicit copy are the visual signal.
-  const isShopMode = title.includes('🛒') && /shop/i.test(title);
+  // Supermarket mode: client sends a title containing "is at the shops"
+  // which is treated as high-attention — sticky on Android
+  // (requireInteraction), stronger vibration, and a shared tag so a
+  // second tap from the same shopper replaces the previous notif
+  // instead of stacking. iOS Safari ignores most of these flags but
+  // still shows the title/body, which is enough.
+  const isShopMode = /is at the shops/i.test(title);
   // iOS Safari aggressively dedupes notifications that share a tag, even with
   // renotify:true — multiple rapid pushes collapse into a single silent one.
   // For normal pushes use a unique tag so each one always rings/buzzes.
