@@ -1,4 +1,4 @@
-const CACHE='cfh-v6-1-1';
+const CACHE='cfh-v6-2-0';
 const ASSETS=[
   '/cheema-family-hub/manifest.json',
   '/cheema-family-hub/icon.png',
@@ -58,13 +58,15 @@ self.addEventListener('push',e=>{
     try{body=e.data.text();}catch(e2){}
   }
 
-  // Supermarket mode: client sends a title containing "is at the shops"
-  // which is treated as high-attention — sticky on Android
-  // (requireInteraction), stronger vibration, and a shared tag so a
-  // second tap from the same shopper replaces the previous notif
-  // instead of stacking. iOS Safari ignores most of these flags but
-  // still shows the title/body, which is enough.
-  const isShopMode = /is at the shops/i.test(title);
+  // Supermarket mode: client sends a title containing "at the shops"
+  // (e.g. "Mum is at the shops!" or "Mum is still at the shops!" for
+  // the ping-again push) which is treated as high-attention — sticky
+  // on Android (requireInteraction), stronger vibration, and a shared
+  // tag so a follow-up ping replaces the previous notif instead of
+  // stacking. The per-add notifs during shop mode use a different
+  // title format ("Dad added: Milk") so they stay non-sticky.
+  // iOS Safari ignores most of these flags but still shows title/body.
+  const isShopMode = /at the shops/i.test(title);
   // iOS Safari aggressively dedupes notifications that share a tag, even with
   // renotify:true — multiple rapid pushes collapse into a single silent one.
   // For normal pushes use a unique tag so each one always rings/buzzes.
