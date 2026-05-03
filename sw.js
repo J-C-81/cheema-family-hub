@@ -1,4 +1,4 @@
-const CACHE='cfh-v6-1-0';
+const CACHE='cfh-v6-1-1';
 const ASSETS=[
   '/cheema-family-hub/manifest.json',
   '/cheema-family-hub/icon.png',
