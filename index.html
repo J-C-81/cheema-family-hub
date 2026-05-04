@@ -120,6 +120,17 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v8.0.1  - Migration retry hardening. v8.0.0's _maybeMigrate set
+            _migrated=true at the top of the function, before
+            actually calling fbPatch — so a single transient
+            network blip on the migration write would skip
+            migration forever for that session. Now: only set the
+            flag after the PATCH succeeds (or when there's nothing
+            to migrate). Concurrent fbReads guarded by a separate
+            _migrating lock so they don't double-fire the PATCH.
+            Moot for the existing data (already migrated server-
+            side), but protects future restores from older
+            backups.
   v8.0.0  - Big backend overhaul, hence the major bump. Visible
             behaviour stays the same; the plumbing is much better.
             (1) Real-time updates: replaced the every-5-seconds
@@ -1017,7 +1028,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v8.0.0';
+const VER='v8.0.1';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#3b82f6'},{name:'Jiv',initials:'J',color:'#f97316'},{name:'Rajan(Midget)',initials:'R',color:'#ef4444'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -1067,7 +1078,7 @@ async function fbRead(){const r=await fetch(FB,{signal:AbortSignal.timeout(8000)
 async function fbReadUpdatedAt(){const r=await fetch(FB.replace(/\.json$/,'/updatedAt.json'),{signal:AbortSignal.timeout(5000)});if(!r.ok)throw new Error(r.status);const v=await r.json();return typeof v==='number'?v:0;}
 function _scrubHist(h){if(!h||typeof h!=='object')return h;const out={};for(const[k,v]of Object.entries(h)){const sk=_histK(k);if(!sk)continue;out[sk]=(out[sk]||0)+(typeof v==='number'?v:0);}return out;}
 async function fbWrite(data){const ih=data&&data.itemHistory;const safeIh=ih?{shop:_scrubHist(ih.shop),todo:_scrubHist(ih.todo)}:ih;const p={...data,itemHistory:safeIh,updatedAt:Date.now()};const r=await fetch(FB,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});if(!r.ok)throw new Error(r.status);return p.updatedAt;}
-let _lastWrittenState=null,_migrated=false;
+let _lastWrittenState=null,_migrated=false,_migrating=false;
 const _OFFLINE_KEY='cfh-pending-writes';
 function _itemMap(arr){const m={};for(const it of (arr||[])){if(it&&it.id)m[it.id]=it;}return m;}
 function _diffById(prev,curr){const out={};const all=new Set([...Object.keys(prev||{}),...Object.keys(curr||{})]);for(const id of all){const p=prev&&prev[id],c=curr&&curr[id];if(!c){out[id]=null;continue;}if(!p||JSON.stringify(p)!==JSON.stringify(c))out[id]=c;}return out;}
@@ -1077,7 +1088,7 @@ async function fbPatch(updates){if(!updates||Object.keys(updates).length===0)ret
 function _enqueueOffline(updates){try{const buf=JSON.parse(localStorage.getItem(_OFFLINE_KEY)||'{}');Object.assign(buf,updates);localStorage.setItem(_OFFLINE_KEY,JSON.stringify(buf));}catch(e){logError('enqueueOffline',e);}}
 function _drainOffline(){try{return JSON.parse(localStorage.getItem(_OFFLINE_KEY)||'{}');}catch(e){return{};}}
 function _clearOffline(){try{localStorage.removeItem(_OFFLINE_KEY);}catch(e){}}
-async function _maybeMigrate(rawD){if(_migrated||!rawD)return;_migrated=true;const u={};for(const coll of ['shop','todo','notes','notices']){const v=rawD[coll];if(!v)continue;const isLegacy=Array.isArray(v)||Object.keys(v).some(k=>/^\d+$/.test(k));if(isLegacy){const m={};for(const item of toArr(v)){if(item&&item.id)m[item.id]=item;}u[coll]=m;}}if(Object.keys(u).length){try{await fbPatch(u);}catch(e){logError('migrate',e);}}}
+async function _maybeMigrate(rawD){if(_migrated||_migrating||!rawD)return;_migrating=true;try{const u={};for(const coll of ['shop','todo','notes','notices']){const v=rawD[coll];if(!v)continue;const isLegacy=Array.isArray(v)||Object.keys(v).some(k=>/^\d+$/.test(k));if(isLegacy){const m={};for(const item of toArr(v)){if(item&&item.id)m[item.id]=item;}u[coll]=m;}}if(Object.keys(u).length===0){_migrated=true;return;}await fbPatch(u);_migrated=true;}catch(e){logError('migrate',e);}finally{_migrating=false;}}
 function setStatus(s){const dot=document.getElementById('sdot'),txt=document.getElementById('stxt');if(!dot)return;const c={live:'#22c55e',saving:'#f59e0b',error:'#ef4444',offline:'#94a3b8'};dot.style.background=c[s]||c.live;txt.textContent={live:'Live',saving:'Saving',error:'Error',offline:'Offline'}[s]||'Live';}
 function mergeLists(local,remote){const m=new Map();for(const it of(remote||[]))if(it&&it.id)m.set(it.id,it);for(const it of(local||[]))if(it&&it.id)m.set(it.id,it);return[...m.values()];}
 function mergeHist(a,b){const out={};const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]);for(const k of keys)out[k]=Math.max((a&&a[k])||0,(b&&b[k])||0);return out;}
