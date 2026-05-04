@@ -120,6 +120,15 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v7.0.8 - Follow-up to v7.0.7: white strip at the bottom came back
+            while the "What's New" popup was on screen. The backdrop
+            (.app-popup-back) was relying on `inset:0`, but iOS
+            backdrop-filter + viewport-fit=cover sometimes doesn't
+            extend the fixed element through the safe-area-inset-
+            bottom region during mount. Now sized explicitly with
+            100lvh (100vh fallback) and nudgeLayout() runs on both
+            popup mount and dismiss to reconcile any viewport
+            jitter the transition kicks off.
   v7.0.7 - Fix white strip at the bottom of the screen on iOS first
             load. <html> had no background, so during the brief
             window before --vh/dvh settled and body filled the
@@ -869,7 +878,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .fdot{width:5px;height:5px;border-radius:50%;background:#22c55e}
 .ftxt{font-size:10px;color:var(--muted);font-weight:500}
 .fver{font-size:10px;font-weight:700;color:var(--muted);background:var(--surf2);border:1px solid var(--brd);padding:2px 7px;border-radius:8px;margin-left:2px}
-.app-popup-back{position:fixed;inset:0;background:rgba(0,0,0,.52);z-index:700;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .22s var(--ease);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.app-popup-back{position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;height:100lvh;background:rgba(0,0,0,.52);z-index:700;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .22s var(--ease);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 .app-popup-back.open{opacity:1;pointer-events:auto}
 .app-popup{background:var(--surf);border:1px solid var(--brd);border-radius:22px;box-shadow:var(--shadow-lg);padding:22px 22px 18px;max-width:320px;width:100%;max-height:80vh;display:flex;flex-direction:column;transform:scale(.92) translateY(10px);transition:transform .28s var(--spring);text-align:center}
 .app-popup-back.open .app-popup{transform:scale(1) translateY(0)}
@@ -934,7 +943,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.0.7';
+const VER='v7.0.8';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#3b82f6'},{name:'Jiv',initials:'J',color:'#f97316'},{name:'Rajan(Midget)',initials:'R',color:'#ef4444'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -1459,9 +1468,9 @@ async function showUpdatePopup(prevVer){
   const bullets=notes.split(/,\s*(?=[A-Z"])/).map(s=>s.trim()).filter(Boolean).map(s=>'• '+s).join('<br>');
   const back=document.createElement('div');
   back.className='app-popup-back';
-  back.innerHTML=`<div class="app-popup"><div class="app-popup-ico">✨</div><div class="app-popup-title">What's New</div><div class="app-popup-sub">${esc(prevVer)} → ${VER}</div><div class="app-popup-body">${bullets}</div><button class="app-popup-btn" onclick="this.closest('.app-popup-back').remove()">Got it</button></div>`;
+  back.innerHTML=`<div class="app-popup"><div class="app-popup-ico">✨</div><div class="app-popup-title">What's New</div><div class="app-popup-sub">${esc(prevVer)} → ${VER}</div><div class="app-popup-body">${bullets}</div><button class="app-popup-btn" onclick="this.closest('.app-popup-back').remove();nudgeLayout()">Got it</button></div>`;
   document.body.appendChild(back);
-  requestAnimationFrame(()=>back.classList.add('open'));
+  requestAnimationFrame(()=>{back.classList.add('open');nudgeLayout();});
 }
 function checkInstallPrompt(){
   if(isStandalone())return;
