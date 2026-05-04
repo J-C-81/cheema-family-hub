@@ -4,7 +4,7 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
-  CURRENT VERSION: v6.2.0
+  CURRENT VERSION: v7.0.0
   (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
    THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
    Do NOT infer the version from the changelog below — it can lag if
@@ -29,11 +29,31 @@
   - fbRead()            — reads all data from Firebase
   - fbWrite(path, data) — writes to Firebase
   - postNote()          — sends a message (keyboard stays up)
-  - bindItemGestures(itemEl) — long-press (350ms) → enters delete-mode
-                          (red border + scale + reveal red bg), then
-                          drag left past 50% width = commit delete.
-                          Tap outside cancels. Tab swipes pass through
-                          when delete-mode is NOT active.
+  - bindItemGestures(itemEl) — long-press (220ms) → enters delete-mode
+                          (red border + scale + reveal red bg) AND
+                          opens an action menu with [Edit][Delete].
+                          From there: drag left past 50% width = commit
+                          delete, tap Edit to edit, tap outside to
+                          cancel. Tab swipes pass through when
+                          delete-mode is NOT active.
+  - bindNoteGestures(noteEl) — long-press (300ms) on a message bubble →
+                          opens action menu with [Edit][Reply][Delete]
+                          (Edit/Delete only on own messages, Reply only
+                          for non-poll messages).
+  - editItem(id) / editNote(id) — open the edit popup for an item or
+                          message; saves on Enter or the Save button.
+  - showActionMenu(target,items) / showEditPopup(title,initial,onSave)
+                          / showConfirmPopup(msg,onYes) — small popup
+                          helpers used for hold-menus, edit dialogs
+                          and the Clear-all confirm.
+  - drafts {shop,todo,msg,notice} — in-memory typed text per tab.
+                          captureDraftsForCurrentTab() runs at the
+                          start of setTab; restoreDraftsForCurrentTab()
+                          runs after the new tab renders, so typing
+                          survives tab switches until the app closes.
+  - syncDvh() — sets --vh to window.innerHeight on load/resize so the
+                          bottom of the screen renders correctly on
+                          first paint (workaround for iOS dvh timing).
   - initTabSwipe()      — doc-level horizontal-swipe handler that
                           changes tab. Bails while any item is in
                           delete-mode drag, while filter sheet open,
@@ -100,6 +120,34 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v7.0.0 - Big quality-of-life pass, hence the major bump. (1) Member
+            colours updated: Mum is now a lighter pink, Dad a deeper
+            blue, Rajan a deep red — all still readable in light and
+            dark mode. (2) The "J as Jiv" tag in the message compose
+            box is gone — the avatar already shows who you are. (3)
+            Hold an item (now 220ms instead of 350ms) and you get an
+            action menu with Edit + Delete; Edit pops a small dialog
+            to rename it without losing its category, photo or qty.
+            Drag-left-to-delete still works while held. (4) On the
+            messages tab, the inline Reply / Delete buttons are gone —
+            hold a message to get Edit (your own), Reply (anyone) and
+            Delete (your own) instead. (5) Type something in any tab,
+            switch away and back, and what you typed is still there
+            until the app is closed. (6) Tick-off undo toast now uses
+            the full screen width minus a margin and sits above the
+            shop-mode pill, so long item names can no longer push it
+            off-screen. (7) Deleting an item now also shows an Undo
+            toast — tap to restore. (8) "Clear all" on ticked-off
+            items now asks for confirmation first. (9) Pull-to-refresh
+            staged: only the thin top bar moves while pulling, the
+            bigger glow appears once you cross the threshold and the
+            refresh actually fires. (10) Swipe-to-change-tabs now has
+            a more dramatic animation — the outgoing tab fades and
+            scales down while the incoming one springs in. (11) Shop-
+            mode "At the shops" pill sits a touch lower on the screen.
+            (12) Fix for the bottom of the screen rendering wrong on
+            first open until you scrolled — the viewport is now
+            recalculated on load and on resize.
   v6.2.0 - Shop-mode upgrades + swipes back. (1) Items added to
             shopping while someone's at the shops now ping the family
             immediately — bypasses the 8-second batch debounce so the
@@ -507,11 +555,11 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
 html,body{overflow-x:hidden}
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;overscroll-behavior:none;transition:background .3s var(--ease),color .3s var(--ease)}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;min-height:var(--vh,100dvh);overscroll-behavior:none;transition:background .3s var(--ease),color .3s var(--ease)}
 button,input,textarea,select{font-family:inherit;color:inherit}
 input::placeholder,textarea::placeholder{color:var(--muted)}
 ::-webkit-scrollbar{display:none}
-.screen{display:none;min-height:100dvh}
+.screen{display:none;min-height:100dvh;min-height:var(--vh,100dvh)}
 .screen.active{display:flex;flex-direction:column}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes scaleIn{from{opacity:0;transform:scale(.9) translateY(16px)}to{opacity:1;transform:none}}
@@ -642,9 +690,15 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .empty-icon{width:52px;height:52px;border-radius:16px;background:var(--surf2);border:1px solid var(--brd);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:22px}
 .empty-title{font-size:15px;font-weight:700;color:var(--sub)}
 .empty-sub{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}
-.undo-toast{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);background:var(--surf3);border:1px solid var(--brd2);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow-lg);z-index:400;animation:slideUp .22s var(--spring) both}
+.undo-toast{position:fixed;bottom:calc(72px + env(safe-area-inset-bottom));left:12px;right:12px;width:auto;max-width:none;margin:0 auto;background:var(--surf3);border:1px solid var(--brd2);border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:10px;box-shadow:var(--shadow-lg);z-index:400;animation:slideUp .22s var(--spring) both;box-sizing:border-box}
 .undo-txt{font-size:13px;font-weight:600;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.undo-btn{font-size:12px;font-weight:700;color:#60a5fa;background:none;border:none;cursor:pointer;padding:2px 0}
+.undo-btn{font-size:12px;font-weight:700;color:#60a5fa;background:none;border:none;cursor:pointer;padding:2px 4px;flex-shrink:0}
+.action-menu{position:fixed;display:flex;gap:5px;padding:5px;background:var(--surf);border:1px solid var(--brd);border-radius:14px;box-shadow:var(--shadow-lg);z-index:550;animation:fadeUp .15s var(--ease) both;max-width:calc(100vw - 16px);flex-wrap:wrap}
+.action-menu-btn{padding:7px 12px;border-radius:9px;border:none;background:var(--surf2);font-size:12px;font-weight:700;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;transition:background .14s,transform .1s,color .14s}
+.action-menu-btn:active{transform:scale(.92);background:var(--surf3)}
+.action-menu-btn.danger{color:#ef4444}
+.edit-input{width:100%;padding:11px 12px;border:1.5px solid var(--brd);border-radius:11px;background:var(--surf2);font-size:14px;font-weight:500;outline:none;color:var(--text);margin-bottom:11px;font-family:inherit;resize:vertical;line-height:1.5;min-height:60px;box-sizing:border-box}
+.edit-input:focus{border-color:#60a5fa}
 .notice-wrap{margin:11px 12px 0}
 .notice-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .notice-hdr-lbl{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:4px}
@@ -661,7 +715,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .notice-compose-ft button{padding:5px 11px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer}
 .msg-compose{margin:12px 12px 0;background:var(--surf);border-radius:var(--r);overflow:hidden;border:1px solid var(--brd);border-top-width:2px;box-shadow:var(--shadow);transition:background .3s,border-color .3s}
 .msg-ta{width:100%;padding:12px 13px;border:none;background:transparent;font-size:14px;font-weight:500;outline:none;color:var(--text);resize:none;display:block;line-height:1.55;overflow-wrap:break-word;word-break:break-word;min-height:60px}
-.msg-ft{display:flex;align-items:center;justify-content:space-between;padding:6px 10px 9px;border-top:1px solid var(--brd);gap:8px}
+.msg-ft{display:flex;align-items:center;justify-content:flex-end;padding:6px 10px 9px;border-top:1px solid var(--brd);gap:8px}
 .msg-as{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--sub);font-weight:500;min-width:0;overflow:hidden}
 .msg-actions{display:flex;gap:6px;flex-shrink:0}
 .post-btn{padding:7px 15px;border-radius:10px;border:none;font-weight:700;font-size:12px;color:white;cursor:pointer;transition:transform .12s var(--ease),opacity .12s;white-space:nowrap}
@@ -715,7 +769,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .reply-bar-text b{font-weight:800}
 .reply-bar-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0 3px;line-height:1;flex-shrink:0}
 .reply-bar-x:active{color:#ef4444}
-.shop-mode-fab{position:fixed;right:14px;bottom:calc(18px + env(safe-area-inset-bottom));display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 16px 0 13px;border-radius:21px;border:none;cursor:pointer;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-size:13px;font-weight:800;letter-spacing:-.1px;box-shadow:0 8px 22px rgba(14,165,233,.42),0 3px 10px rgba(0,0,0,.18);z-index:150;transition:transform .14s var(--spring),box-shadow .2s,opacity .15s;animation:scaleIn .3s var(--spring) both}
+.shop-mode-fab{position:fixed;right:14px;bottom:calc(6px + env(safe-area-inset-bottom));display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 16px 0 13px;border-radius:21px;border:none;cursor:pointer;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-size:13px;font-weight:800;letter-spacing:-.1px;box-shadow:0 8px 22px rgba(14,165,233,.42),0 3px 10px rgba(0,0,0,.18);z-index:150;transition:transform .14s var(--spring),box-shadow .2s,opacity .15s;animation:scaleIn .3s var(--spring) both}
 .shop-mode-fab:active{transform:scale(.94);box-shadow:0 4px 14px rgba(14,165,233,.35)}
 .shop-mode-fab svg{flex-shrink:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.18))}
 .shop-mode-banner{display:flex;align-items:center;gap:10px;margin:11px 12px 0;padding:11px 13px;border-radius:13px;border:1.5px solid;background:var(--surf);box-shadow:var(--shadow)}
@@ -830,9 +884,9 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v6.2.0';
+const VER='v7.0.0';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
-const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#60a5fa'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#a78bfa'}];
+const MEMBERS=[{name:'Mum',initials:'M',color:'#f9a8d4'},{name:'Dad',initials:'D',color:'#2563eb'},{name:'Jiv',initials:'J',color:'#fb923c'},{name:'Rajan(Midget)',initials:'R',color:'#dc2626'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
 function iconSvg(key,size){const paths={shop:'<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>',todo:'<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',notes:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',camera:'<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',poll:'<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>',pin:'<line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/>',tag:'<path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',image:'<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',cart:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',reply:'<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>'};return`<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths[key]}</svg>`;}
 const TABS=[{key:'shop',label:'Shopping',icon:iconSvg('shop',14),accent:'#0ea5e9'},{key:'todo',label:'To-Do',icon:iconSvg('todo',14),accent:'#818cf8'},{key:'notes',label:'Messages',icon:iconSvg('notes',14),accent:'#2dd4bf'}];
@@ -850,6 +904,7 @@ let lastTs=0,isSaving=false,pollTimer=null,openPicker=null,transitioning=false,f
 let notifDismissed=false,swReg=null,shouldFocus=false,showNoticeCompose=false,showPollCompose=false,pollOpts=['',''],pollQ='';
 let pendingMsgImage=null,pendingMsgUploading=false;
 let undoTimer=null,lastReadNotes=0;
+function syncDvh(){try{document.documentElement.style.setProperty('--vh',window.innerHeight+'px');}catch(e){}}
 function initTheme(){syncThemeBtn();}
 function toggleTheme(){haptic([8,40,8]);const d=document.documentElement.classList.toggle('dark');localStorage.setItem('cfh-theme',d?'dark':'light');document.getElementById('tmeta').content=d?'#09090c':'#eef2ff';syncThemeBtn();}
 function syncThemeBtn(){const ic=document.getElementById('theme-icon');if(!ic)return;ic.innerHTML=document.documentElement.classList.contains('dark')?'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>':'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';}
@@ -897,6 +952,7 @@ function cancelPull(){const bar=document.getElementById("ptr-bar"),glow=document
 async function setTab(i){
   if(transitioning||i===tabIdx)return;
   if(filterSheetOpen)closeFilterSheet();
+  captureDraftsForCurrentTab();
   haptic(6);
   transitioning=true;
   const dir=i>tabIdx?1:-1;
@@ -916,37 +972,150 @@ async function setTab(i){
   c.scrollTop=0;
   // Prepare slide: new content starts offscreen, ghost starts in view
   const SLIDE_EASE='cubic-bezier(.22,1,.36,1)';
-  const SLIDE_MS=360;
+  const SLIDE_MS=440;
   c.style.transition='none';
-  c.style.transform=`translate3d(${dir*100}%,0,0)`;
-  ghost.style.transform='translate3d(0,0,0)';
+  c.style.transform=`translate3d(${dir*100}%,0,0) scale(.94)`;
+  c.style.opacity='0.4';
+  c.style.transformOrigin=dir>0?'left center':'right center';
+  ghost.style.transform='translate3d(0,0,0) scale(1)';
+  ghost.style.opacity='1';
+  ghost.style.transformOrigin=dir>0?'right center':'left center';
   // Force reflow so the initial positions apply
   void c.offsetHeight;
   // Animate both in tandem
-  c.style.transition=`transform ${SLIDE_MS}ms ${SLIDE_EASE}`;
-  ghost.style.transition=`transform ${SLIDE_MS}ms ${SLIDE_EASE}`;
-  c.style.transform='translate3d(0,0,0)';
-  ghost.style.transform=`translate3d(${-dir*100}%,0,0)`;
+  c.style.transition=`transform ${SLIDE_MS}ms ${SLIDE_EASE},opacity ${Math.round(SLIDE_MS*0.7)}ms ease-out`;
+  ghost.style.transition=`transform ${SLIDE_MS}ms ${SLIDE_EASE},opacity ${Math.round(SLIDE_MS*0.7)}ms ease-out`;
+  c.style.transform='translate3d(0,0,0) scale(1)';
+  c.style.opacity='1';
+  ghost.style.transform=`translate3d(${-dir*100}%,0,0) scale(.94)`;
+  ghost.style.opacity='0.4';
   setTimeout(()=>{
     ghost.remove();
     c.style.transition='';
     c.style.transform='';
+    c.style.opacity='';
+    c.style.transformOrigin='';
     transitioning=false;
   },SLIDE_MS+10);
 }
 function setSort(v){if(tabIdx===0)shopSort=v;else todoSort=v;renderContent();if(filterSheetOpen)renderFilterSheetContent();}
 function notifBar(){if(notifDismissed||!('Notification' in window))return'';if(Notification.permission==='granted')return'';if(!isStandalone()&&isIOS())return`<div class="notif-bar"><span class="notif-bar-txt">Open from home screen icon to enable notifications</span><button class="notif-bar-dis" onclick="notifDismissed=true;renderContent()">✕</button></div>`;return`<div class="notif-bar"><span class="notif-bar-txt">Tap to get notifications</span><button class="notif-bar-act" onclick="doEnableNotifs()">Enable</button><button class="notif-bar-dis" onclick="notifDismissed=true;renderContent()">✕</button></div>`;}
 async function doEnableNotifs(){const ok=await subscribePush();notifDismissed=true;renderContent();if(ok&&swReg)swReg.showNotification('Notifications on',{body:"You'll get notified when the family adds something",icon:'/icon.png'});}
-function renderContent(){const c=document.getElementById('content'),acc=TABS[tabIdx].accent;if(tabIdx===2){applyContent(c,buildMsgs(),()=>{bindMsgEv();initTabSwipe();initOutsideDeleteCancel();});return;}const isS=tabIdx===0,list=isS?state.shop:state.todo;const sort=isS?shopSort:todoSort,urg=isS?shopUrg:todoUrg;const filters=isS?shopFilters:todoFilters;let filtered=filters.length===0?list:list.filter(i=>filters.includes(i.addedBy));if(isS&&shopCats.length)filtered=filtered.filter(i=>shopCats.includes(i.cat||''));const pending=sortList(filtered.filter(i=>!i.done),sort),done=sortList(filtered.filter(i=>i.done),sort);const notices=state.notices||[];const noticeHTML=notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notices</span></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:'';const urgBtns=URGENCY.map((u,i)=>`<button class="urg-btn" onclick="setUrg(${i})" style="border-color:${urg===i?u.color:'var(--brd)'};background:${urg===i?u.color+'18':'transparent'};color:${urg===i?u.color:'var(--muted)'}"><span class="udot" style="background:${urg===i?u.ring:'var(--brd)'}"></span>${u.label}</button>`).join('');const emptyIcon=isS?iconSvg('shop',24):iconSvg('todo',24);const pH=pending.length===0?`<div class="empty"><div class="empty-icon">${emptyIcon}</div><div class="empty-title">${list.length===0?(isS?'Shopping list is empty':'No tasks yet'):'All done'}</div>${list.length===0?'<div class="empty-sub">Tap above to add something</div>':''}</div>`:pending.map(it=>rItem(it,false)).join('');const dH=done.length===0?'':`<div class="done-sec"><div class="done-sep"></div><div class="done-hdr"><span class="done-ttl">Completed · ${done.length}</span><button class="clear-btn" onclick="clearDone()">Clear all</button></div>${done.map(it=>rItem(it,true)).join('')}</div>`;const shopFab=(isS&&!shopModeActive())?`<button class="shop-mode-fab" onclick="startShopMode()" title="I'm at the shops">${iconSvg('cart',16)}<span>At the shops</span></button>`:'';const listHdr=`<div class="list-hdr"><span class="list-hdr-txt">${pending.length} remaining</span><button class="filter-trigger" onclick="openFilterSheet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>Filter &amp; Sort${hasActiveFilters()?'<span class="filter-dot"></span>':''}</button></div>`;const htmlOut=`${notifBar()}${isS?renderShopModeUI():''}${noticeHTML}<div class="input-card"><div class="input-row"><input class="main-input" id="mi" placeholder="${isS?'Add to shopping…':'Add a task…'}" style="caret-color:${acc}" onkeydown="if(event.key==='Enter')addItem()" oninput="updateSuggestions()"><button class="add-btn" onclick="addItem()" style="background:${acc}">Add</button></div><div class="suggest-row" id="suggest-row"></div><div class="urg-row"><span class="urg-lbl">Priority</span>${urgBtns}</div></div>${listHdr}<div class="list-wrap">${pH}</div>${dH}<div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>${shopFab}`;applyContent(c,htmlOut,()=>{if(shouldFocus){document.getElementById('mi')?.focus();shouldFocus=false;}document.querySelectorAll('.list-wrap .item').forEach(bindItemGestures);initTabSwipe();initOutsideDeleteCancel();initPullRefresh();});}
+function renderContent(){const c=document.getElementById('content'),acc=TABS[tabIdx].accent;if(tabIdx===2){applyContent(c,buildMsgs(),()=>{bindMsgEv();initTabSwipe();initOutsideDeleteCancel();document.querySelectorAll('.msg-feed .nwrap').forEach(bindNoteGestures);restoreDraftsForCurrentTab();});return;}const isS=tabIdx===0,list=isS?state.shop:state.todo;const sort=isS?shopSort:todoSort,urg=isS?shopUrg:todoUrg;const filters=isS?shopFilters:todoFilters;let filtered=filters.length===0?list:list.filter(i=>filters.includes(i.addedBy));if(isS&&shopCats.length)filtered=filtered.filter(i=>shopCats.includes(i.cat||''));const pending=sortList(filtered.filter(i=>!i.done),sort),done=sortList(filtered.filter(i=>i.done),sort);const notices=state.notices||[];const noticeHTML=notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notices</span></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:'';const urgBtns=URGENCY.map((u,i)=>`<button class="urg-btn" onclick="setUrg(${i})" style="border-color:${urg===i?u.color:'var(--brd)'};background:${urg===i?u.color+'18':'transparent'};color:${urg===i?u.color:'var(--muted)'}"><span class="udot" style="background:${urg===i?u.ring:'var(--brd)'}"></span>${u.label}</button>`).join('');const emptyIcon=isS?iconSvg('shop',24):iconSvg('todo',24);const pH=pending.length===0?`<div class="empty"><div class="empty-icon">${emptyIcon}</div><div class="empty-title">${list.length===0?(isS?'Shopping list is empty':'No tasks yet'):'All done'}</div>${list.length===0?'<div class="empty-sub">Tap above to add something</div>':''}</div>`:pending.map(it=>rItem(it,false)).join('');const dH=done.length===0?'':`<div class="done-sec"><div class="done-sep"></div><div class="done-hdr"><span class="done-ttl">Completed · ${done.length}</span><button class="clear-btn" onclick="clearDone()">Clear all</button></div>${done.map(it=>rItem(it,true)).join('')}</div>`;const shopFab=(isS&&!shopModeActive())?`<button class="shop-mode-fab" onclick="startShopMode()" title="I'm at the shops">${iconSvg('cart',16)}<span>At the shops</span></button>`:'';const listHdr=`<div class="list-hdr"><span class="list-hdr-txt">${pending.length} remaining</span><button class="filter-trigger" onclick="openFilterSheet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>Filter &amp; Sort${hasActiveFilters()?'<span class="filter-dot"></span>':''}</button></div>`;const htmlOut=`${notifBar()}${isS?renderShopModeUI():''}${noticeHTML}<div class="input-card"><div class="input-row"><input class="main-input" id="mi" placeholder="${isS?'Add to shopping…':'Add a task…'}" style="caret-color:${acc}" onkeydown="if(event.key==='Enter')addItem()" oninput="updateSuggestions()"><button class="add-btn" onclick="addItem()" style="background:${acc}">Add</button></div><div class="suggest-row" id="suggest-row"></div><div class="urg-row"><span class="urg-lbl">Priority</span>${urgBtns}</div></div>${listHdr}<div class="list-wrap">${pH}</div>${dH}<div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>${shopFab}`;applyContent(c,htmlOut,()=>{if(shouldFocus){document.getElementById('mi')?.focus();shouldFocus=false;}document.querySelectorAll('.list-wrap .item').forEach(bindItemGestures);initTabSwipe();initOutsideDeleteCancel();initPullRefresh();restoreDraftsForCurrentTab();});}
 function setCat(cid){if(tabIdx!==0)return;if(cid==='All'){shopCats=[];}else{const i=shopCats.indexOf(cid);if(i>=0)shopCats.splice(i,1);else shopCats.push(cid);}renderContent();if(filterSheetOpen)renderFilterSheetContent();}
 function rItem(it,isDone){const m=getMem(it.addedBy),u=it.urgency!=null?URGENCY[it.urgency]:URGENCY[0];const catId=it.cat||(tabIdx===0?'other':'');const ci=CATS.find(c=>c.id===catId);const ub=`<span class="iurg" onclick="cycleUrg(event,'${it.id}')" style="color:${u.color}"><span class="udot" style="background:${u.ring};margin-right:2px"></span>${u.label}</span>`;const catTag=ci&&!isDone?`<span class="icat">${iconSvg('tag',10)}${ci.label}</span>`:'';const chk=`border-color:${m.color}55${isDone?`;background:${m.color}22;color:${m.color}`:''}`;const bord=isDone?`${u.color}44`:u.color;const isShop=tabIdx===0;const qty=Math.max(1,it.qty||1);const qtyStepper=isShop&&!isDone?`<span class="qty-step"><button class="qty-btn" onclick="setQty(event,'${it.id}',-1)"${qty<=1?' disabled':''}>−</button><span class="qty-val">${qty}</span><button class="qty-btn" onclick="setQty(event,'${it.id}',1)">+</button></span>`:'';const qtyBadge=isShop&&qty>1&&isDone?`<span class="iqty">×${qty}</span>`:'';const doneBy=isDone?`<span class="itime">by ${esc(it.doneBy||'?')}</span>`:'';const photoEl=it.photo?`<img class="item-photo" src="${it.photo}" onclick="viewPhoto('${it.photo}')">`:(isDone?'':`<button class="photo-btn" onclick="addPhoto('${it.id}')" title="Add photo">${iconSvg('camera',14)}</button>`);const rightCol=(photoEl||catTag)?`<div class="iright">${photoEl}${catTag}</div>`:'';const trash=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;return`<div class="item-wrap"><div class="item-bg">${trash}</div><div class="item${isDone?' done':''}" data-id="${it.id}" style="border-left-color:${bord}"><button class="ichk" style="${chk}" onclick="toggleItem('${it.id}')">${isDone?'✓':''}</button><div class="ibody"><div class="itext${isDone?' struck':''}">${esc(it.text)}</div><div class="imeta"><span class="iname" style="color:${m.color}">${esc(it.addedBy)}</span>${ub}${doneBy}${qtyStepper}${qtyBadge}</div></div>${rightCol}<button class="del-btn" onclick="delItem('${it.id}')">×</button></div></div>`;}
 let _itemActiveDrag=false;
+let drafts={shop:'',todo:'',msg:'',notice:''};
+function _draftKeyForTab(){return tabIdx===0?'shop':(tabIdx===1?'todo':null);}
+function captureDraftsForCurrentTab(){const k=_draftKeyForTab();if(k!==null){const mi=document.getElementById('mi');if(mi)drafts[k]=mi.value;}if(tabIdx===2){const ni=document.getElementById('ni');if(ni)drafts.msg=ni.value;const nt=document.getElementById('notice-ta');if(nt)drafts.notice=nt.value;}}
+function restoreDraftsForCurrentTab(){const k=_draftKeyForTab();if(k!==null){const mi=document.getElementById('mi');if(mi&&drafts[k]&&!mi.value)mi.value=drafts[k];}if(tabIdx===2){const ni=document.getElementById('ni');if(ni&&drafts.msg&&!ni.value)ni.value=drafts.msg;const nt=document.getElementById('notice-ta');if(nt&&drafts.notice&&!nt.value)nt.value=drafts.notice;}}
+function showActionMenu(targetEl,items){
+  document.querySelectorAll('.action-menu').forEach(p=>p.remove());
+  if(!items||!items.length)return;
+  const m=document.createElement('div');
+  m.className='action-menu';
+  m.innerHTML=items.map((it,i)=>`<button class="action-menu-btn${it.danger?' danger':''}" data-i="${i}">${esc(it.label)}</button>`).join('');
+  m.style.visibility='hidden';m.style.left='-9999px';m.style.top='-9999px';
+  document.body.appendChild(m);
+  const rect=targetEl.getBoundingClientRect();
+  const mw=m.offsetWidth,mh=m.offsetHeight,margin=8;
+  let left=Math.max(margin,Math.min(rect.right-mw,window.innerWidth-mw-margin));
+  let top=rect.top-mh-8;
+  if(top<70)top=Math.min(rect.bottom+6,window.innerHeight-mh-margin);
+  m.style.left=left+'px';m.style.top=top+'px';m.style.visibility='';
+  m.querySelectorAll('button').forEach((b,i)=>{
+    b.addEventListener('click',ev=>{ev.stopPropagation();if(!m.parentNode)return;m.remove();items[i].fn();});
+  });
+  setTimeout(()=>{
+    const dismiss=e=>{if(m.contains(e.target))return;m.remove();document.removeEventListener('touchstart',dismiss,true);document.removeEventListener('click',dismiss,true);document.removeEventListener('scroll',dismiss,true);};
+    document.addEventListener('touchstart',dismiss,{capture:true,passive:true});
+    document.addEventListener('click',dismiss,{capture:true});
+    const cnt=document.getElementById('content');if(cnt)cnt.addEventListener('scroll',dismiss,{once:true,passive:true});
+  },60);
+  return m;
+}
+function showEditPopup(title,initial,onSave){
+  if(document.querySelector('.app-popup-back'))return;
+  const back=document.createElement('div');
+  back.className='app-popup-back';
+  back.innerHTML=`<div class="app-popup" style="text-align:left"><div class="app-popup-title" style="text-align:left;margin-bottom:12px">${esc(title)}</div><textarea class="edit-input" rows="3"></textarea><div style="display:flex;gap:8px"><button class="app-popup-dismiss" style="flex:1;margin-top:0;background:var(--surf2);border:1px solid var(--brd);border-radius:11px;color:var(--sub);padding:11px 0;font-weight:700" data-cancel>Cancel</button><button class="app-popup-btn" style="flex:1" data-save>Save</button></div></div>`;
+  document.body.appendChild(back);
+  const ta=back.querySelector('textarea');
+  ta.value=initial||'';
+  requestAnimationFrame(()=>back.classList.add('open'));
+  setTimeout(()=>{ta.focus();const v=ta.value;ta.setSelectionRange(v.length,v.length);},80);
+  const close=()=>back.remove();
+  back.querySelector('[data-cancel]').onclick=close;
+  const save=()=>{const v=ta.value.trim();back.remove();if(v!==null&&v!==undefined)onSave(v);};
+  back.querySelector('[data-save]').onclick=save;
+  ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();save();}});
+  back.addEventListener('click',e=>{if(e.target===back)close();});
+}
+function showConfirmPopup(msg,onYes){
+  if(document.querySelector('.app-popup-back'))return;
+  const back=document.createElement('div');
+  back.className='app-popup-back';
+  back.innerHTML=`<div class="app-popup"><div class="app-popup-title" style="margin-bottom:14px">${esc(msg)}</div><div style="display:flex;gap:8px"><button class="app-popup-dismiss" style="flex:1;margin-top:0;background:var(--surf2);border:1px solid var(--brd);border-radius:11px;color:var(--sub);padding:11px 0;font-weight:700" data-cancel>Cancel</button><button class="app-popup-btn" style="flex:1" data-yes>Confirm</button></div></div>`;
+  document.body.appendChild(back);
+  requestAnimationFrame(()=>back.classList.add('open'));
+  const close=()=>back.remove();
+  back.querySelector('[data-cancel]').onclick=close;
+  back.querySelector('[data-yes]').onclick=()=>{back.remove();onYes();};
+  back.addEventListener('click',e=>{if(e.target===back)close();});
+}
+function editItem(id){
+  const k=tabIdx===0?'shop':'todo';
+  const it=state[k].find(i=>i.id===id);
+  if(!it)return;
+  showEditPopup('Edit '+(tabIdx===0?'item':'task'),it.text,newText=>{
+    if(!newText||newText===it.text)return;
+    state[k]=state[k].map(i=>i.id===id?{...i,text:newText,cat:tabIdx===0?suggestCat(newText):i.cat}:i);
+    haptic(8);renderContent();save();
+  });
+}
+function editNote(id){
+  const n=state.notes.find(x=>x.id===id);
+  if(!n||n.author!==member||n.type==='poll')return;
+  showEditPopup('Edit message',n.text||'',newText=>{
+    if(newText===(n.text||''))return;
+    state.notes=state.notes.map(x=>x.id===id?{...x,text:newText,edited:Date.now()}:x);
+    haptic(8);renderContent();save();
+  });
+}
+function bindNoteGestures(noteEl){
+  if(!noteEl||noteEl._gb)return;noteEl._gb=true;
+  const id=noteEl.dataset.noteid;if(!id)return;
+  const HOLD_MS=300;const MOVE_TOL=10;
+  let pressTimer=null,sx=0,sy=0;
+  function arm(e){
+    const t=e.touches[0];sx=t.clientX;sy=t.clientY;
+    if(pressTimer)clearTimeout(pressTimer);
+    pressTimer=setTimeout(()=>{
+      pressTimer=null;
+      const n=state.notes.find(x=>x.id===id);if(!n)return;
+      const isMine=n.author===member,isPoll=n.type==='poll';
+      const items=[];
+      if(isMine&&!isPoll)items.push({label:'Edit',fn:()=>editNote(id)});
+      if(!isPoll)items.push({label:'Reply',fn:()=>startReply(id)});
+      if(isMine)items.push({label:'Delete',danger:true,fn:()=>delNote(id)});
+      if(!items.length)return;
+      haptic([12,30,12]);
+      const target=noteEl.querySelector('.nbubble')||noteEl;
+      showActionMenu(target,items);
+    },HOLD_MS);
+  }
+  function cancel(){if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}}
+  noteEl.addEventListener('touchstart',arm,{passive:true});
+  noteEl.addEventListener('touchmove',e=>{if(!pressTimer)return;const t=e.touches[0];if(Math.abs(t.clientX-sx)>MOVE_TOL||Math.abs(t.clientY-sy)>MOVE_TOL)cancel();},{passive:true});
+  noteEl.addEventListener('touchend',cancel);
+  noteEl.addEventListener('touchcancel',cancel);
+}
 function bindItemGestures(itemEl){
   if(itemEl._gb)return;itemEl._gb=true;
   const wrap=itemEl.parentElement;
   const bg=wrap&&wrap.querySelector('.item-bg');
   const id=itemEl.dataset.id;
-  const LONG_MS=350,COMMIT_FRAC=0.5,LOCK=8;
+  const LONG_MS=220,COMMIT_FRAC=0.5,LOCK=8;
   let pressTimer=null,sx=0,sy=0,cx=0,locked=null,deleteMode=false,gone=false;
   function enterDelete(){
     if(deleteMode||gone)return;
@@ -954,6 +1123,7 @@ function bindItemGestures(itemEl){
     haptic([14,30,14]);
     itemEl.classList.add('delete-mode');
     if(bg)bg.classList.add('show');
+    showActionMenu(itemEl,[{label:'Edit',fn:()=>{snapBack();editItem(id);}},{label:'Delete',danger:true,fn:()=>{commit();}}]);
   }
   function snapBack(){
     deleteMode=false;
@@ -1121,11 +1291,14 @@ function initPullRefresh(){
     const pct=Math.min(pull/62,1);
     c.style.transition='none';
     c.style.transform=`translate3d(0,${pull}px,0)`;
-    bar.style.opacity='1';glow.style.opacity=pct*0.6;
+    bar.style.opacity='1';
+    if(!triggered)glow.style.opacity='0';
     setPct(pct);
     if(pct>=1&&!triggered){
       triggered=true;
       haptic([15,80,15,60,20,40,15]);
+      glow.style.transition='opacity .22s ease';
+      glow.style.opacity='0.7';
       bar.style.transition='opacity .08s';bar.style.opacity='0.3';
       setTimeout(()=>{bar.style.opacity='1';bar.style.transition='none';},90);
     }
@@ -1163,10 +1336,10 @@ function initPullRefresh(){
     setTimeout(()=>{c.style.transition='';c.style.transform='';bar.style.transition='none';setPct(0);glow.style.transition='none';ptrRefreshing=false;},550);
   },{passive:true});
 }
-function buildMsgs(){const acc=TABS[2].accent,me=getMem(member);const notices=state.notices||[];const noticeBlock=!notices.length&&!showNoticeCompose?'':(notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span><button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span>${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}</div>${showNoticeCompose?noticeCompose():''}</div>`);const feed=state.notes.length===0?`<div class="empty"><div class="empty-icon">${iconSvg('notes',24)}</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`:[...state.notes].sort((a,b)=>((b.type==='poll'&&b.pinned)?1:0)-((a.type==='poll'&&a.pinned)?1:0)).map(n=>{const auth=getMem(n.author),isMe=n.author===member;if(n.type==='poll')return renderPollBubble(n,auth,isMe);const rx=n.reactions||{};const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');const rxbarHTML=`<div class="rbar" id="rb${n.id}">${rxH}<button class="radd" onclick="showPicker(event,'${n.id}')">+</button></div>`;const replyBtn=`<button class="nreply" onclick="startReply('${n.id}')" title="Reply">${iconSvg('reply',12)}Reply</button>`;const bottomHTML=isMe?`<div class="nbottom"><button class="ndel" onclick="delNote('${n.id}')">Delete</button><div class="nbottom-end">${replyBtn}${rxbarHTML}</div></div>`:`<div class="nbottom-end">${replyBtn}${rxbarHTML}</div>`;const imgHTML=n.image?`<img class="nimg" src="${esc(n.image)}" onclick="viewPhoto('${esc(n.image)}')">`:'';const textHTML=n.text?`<div class="ntext">${esc(n.text)}</div>`:'';const replyTo=n.replyTo;const rt=replyTo?`<div class="nreplyto" onclick="scrollToNote('${esc(replyTo.id)}')"><span class="nreplyto-author" style="color:${getMem(replyTo.author).color}">${esc(replyTo.author)}</span><span class="nreplyto-text">${replyTo.hasImage?`<span class="nreplyto-img">${iconSvg('image',10)}</span>`:''}${esc(replyTo.text||(replyTo.hasImage?'(image)':'(message)'))}</span></div>`:'';const bubbleHTML=`<div class="nbubble ${isMe?'mine':'theirs'}${n.image&&!n.text&&!rt?' img-only':''}" style="background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}">${rt}${imgHTML}${textHTML}</div>`;const bodyHTML=isMe?`<div class="nbubble-col">${bubbleHTML}${bottomHTML}</div>`:`${bubbleHTML}${bottomHTML}`;return`<div class="nwrap ${isMe?'mine':'theirs'}" data-noteid="${n.id}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div>${bodyHTML}</div>`;}).join('');const previewHTML=pendingMsgImage?`<div class="msg-preview"><img id="msg-preview-img" src="${esc(pendingMsgImage)}"><button class="msg-preview-rm" onclick="cancelMsgImage()" title="Remove">×</button></div>`:(pendingMsgUploading?`<div class="msg-preview"><div class="msg-preview-up">Uploading…</div></div>`:'');const replyBarHTML=replyingTo?`<div class="reply-bar"><span class="reply-bar-icon">${iconSvg('reply',13)}</span><span class="reply-bar-text">Replying to <b style="color:${getMem(replyingTo.author).color}">${esc(replyingTo.author)}</b>: ${replyingTo.hasImage&&!replyingTo.text?`${iconSvg('image',11)} image`:esc((replyingTo.text||'').slice(0,80))}</span><button class="reply-bar-x" onclick="cancelReply()" title="Cancel reply">×</button></div>`:'';const composeSection=showNoticeCompose&&!notices.length?'':`<div class="msg-compose" style="border-top-color:${acc}">${replyBarHTML}<textarea class="msg-ta" id="ni" placeholder="Message the family…" style="caret-color:${acc}"></textarea>${previewHTML}<div class="msg-ft"><div class="msg-as"><div class="av" style="width:20px;height:20px;font-size:8px;color:${me.color};background:${me.color}18;border:1.5px solid ${me.color}44;border-radius:28%;flex-shrink:0">${me.initials}</div><span>as</span><b style="color:${me.color};margin-left:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(member)}</b></div><div class="msg-actions"><button class="msg-tool-btn" onclick="attachMsgImage()" title="Attach image / GIF">${iconSvg('image',14)}</button><button class="msg-tool-btn" onclick="showPollCompose=!showPollCompose;renderContent()" title="Create poll">${iconSvg('poll',14)}</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div></div></div>${showPollCompose?buildPollCompose():''}`;return`${notifBar()}${shopModeActive()?renderShopModeUI():''}${noticeBlock}${composeSection}<div class="msg-feed">${feed}</div><div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;}
+function buildMsgs(){const acc=TABS[2].accent,me=getMem(member);const notices=state.notices||[];const noticeBlock=!notices.length&&!showNoticeCompose?'':(notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span><button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span>${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}</div>${showNoticeCompose?noticeCompose():''}</div>`);const feed=state.notes.length===0?`<div class="empty"><div class="empty-icon">${iconSvg('notes',24)}</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`:[...state.notes].sort((a,b)=>((b.type==='poll'&&b.pinned)?1:0)-((a.type==='poll'&&a.pinned)?1:0)).map(n=>{const auth=getMem(n.author),isMe=n.author===member;if(n.type==='poll')return renderPollBubble(n,auth,isMe);const rx=n.reactions||{};const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');const rxbarHTML=`<div class="rbar" id="rb${n.id}">${rxH}<button class="radd" onclick="showPicker(event,'${n.id}')">+</button></div>`;const bottomHTML=`<div class="nbottom-end">${rxbarHTML}</div>`;const imgHTML=n.image?`<img class="nimg" src="${esc(n.image)}" onclick="viewPhoto('${esc(n.image)}')">`:'';const textHTML=n.text?`<div class="ntext">${esc(n.text)}</div>`:'';const replyTo=n.replyTo;const rt=replyTo?`<div class="nreplyto" onclick="scrollToNote('${esc(replyTo.id)}')"><span class="nreplyto-author" style="color:${getMem(replyTo.author).color}">${esc(replyTo.author)}</span><span class="nreplyto-text">${replyTo.hasImage?`<span class="nreplyto-img">${iconSvg('image',10)}</span>`:''}${esc(replyTo.text||(replyTo.hasImage?'(image)':'(message)'))}</span></div>`:'';const bubbleHTML=`<div class="nbubble ${isMe?'mine':'theirs'}${n.image&&!n.text&&!rt?' img-only':''}" style="background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}">${rt}${imgHTML}${textHTML}</div>`;const bodyHTML=isMe?`<div class="nbubble-col">${bubbleHTML}${bottomHTML}</div>`:`${bubbleHTML}${bottomHTML}`;return`<div class="nwrap ${isMe?'mine':'theirs'}" data-noteid="${n.id}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div>${bodyHTML}</div>`;}).join('');const previewHTML=pendingMsgImage?`<div class="msg-preview"><img id="msg-preview-img" src="${esc(pendingMsgImage)}"><button class="msg-preview-rm" onclick="cancelMsgImage()" title="Remove">×</button></div>`:(pendingMsgUploading?`<div class="msg-preview"><div class="msg-preview-up">Uploading…</div></div>`:'');const replyBarHTML=replyingTo?`<div class="reply-bar"><span class="reply-bar-icon">${iconSvg('reply',13)}</span><span class="reply-bar-text">Replying to <b style="color:${getMem(replyingTo.author).color}">${esc(replyingTo.author)}</b>: ${replyingTo.hasImage&&!replyingTo.text?`${iconSvg('image',11)} image`:esc((replyingTo.text||'').slice(0,80))}</span><button class="reply-bar-x" onclick="cancelReply()" title="Cancel reply">×</button></div>`:'';const composeSection=showNoticeCompose&&!notices.length?'':`<div class="msg-compose" style="border-top-color:${acc}">${replyBarHTML}<textarea class="msg-ta" id="ni" placeholder="Message the family…" style="caret-color:${acc}"></textarea>${previewHTML}<div class="msg-ft"><div class="msg-actions"><button class="msg-tool-btn" onclick="attachMsgImage()" title="Attach image / GIF">${iconSvg('image',14)}</button><button class="msg-tool-btn" onclick="showPollCompose=!showPollCompose;renderContent()" title="Create poll">${iconSvg('poll',14)}</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div></div></div>${showPollCompose?buildPollCompose():''}`;return`${notifBar()}${shopModeActive()?renderShopModeUI():''}${noticeBlock}${composeSection}<div class="msg-feed">${feed}</div><div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;}
 function bindMsgEv(){const b=document.getElementById('pb'),i=document.getElementById('ni');if(b)b.onclick=postNote;if(i){i.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();postNote();}});i.addEventListener('paste',handleMsgPaste);}initTabSwipe();initOutsideDeleteCancel();initPullRefresh();}
 function noticeCompose(){return`<div class="notice-compose"><textarea id="notice-ta" placeholder="Write a notice…" rows="2" style="caret-color:#f59e0b"></textarea><div class="notice-compose-ft"><button onclick="showNoticeCompose=false;renderContent()" style="background:var(--surf2);border:1px solid var(--brd);color:var(--sub)">Cancel</button><button onclick="postNotice()" style="background:#f59e0b;color:white;border:none">${iconSvg('pin',12)} Pin it</button></div></div>`;}
-function postNotice(){const text=document.getElementById('notice-ta')?.value.trim();if(!text)return;state.notices=[{id:genId(),text,author:member,ts:Date.now()},...(state.notices||[])];showNoticeCompose=false;renderContent();save();}
+function postNotice(){const text=document.getElementById('notice-ta')?.value.trim();if(!text)return;state.notices=[{id:genId(),text,author:member,ts:Date.now()},...(state.notices||[])];drafts.notice='';showNoticeCompose=false;renderContent();save();}
 function unpinNotice(id){state.notices=(state.notices||[]).filter(n=>n.id!==id);renderContent();save();}
 function buildPollCompose(){const opts=pollOpts.map((o,i)=>`<div class="poll-opt-row"><input class="poll-opt-input" placeholder="Option ${i+1}" value="${esc(o)}" oninput="pollOpts[${i}]=this.value">${pollOpts.length>2?`<button class="poll-opt-rm" onclick="pollOpts.splice(${i},1);renderContent()">×</button>`:''}</div>`).join('');return`<div class="poll-compose" style="margin:8px 12px 0"><input class="poll-q-input" id="poll-q" placeholder="Ask the family something…" value="${esc(pollQ)}" oninput="pollQ=this.value">${opts}<div class="poll-actions">${pollOpts.length<4?`<button class="poll-add-opt" onclick="pollOpts.push('');renderContent()">+ Option</button>`:''}<button class="poll-submit" style="background:${TABS[2].accent}" onclick="postPoll()">Post Poll</button><button class="poll-cancel" onclick="showPollCompose=false;pollOpts=['',''];pollQ='';renderContent()">Cancel</button></div></div>`;}
 function postPoll(){const q=(pollQ||'').trim(),opts=pollOpts.filter(o=>o.trim());if(!q||opts.length<2)return;const poll={id:genId(),q,opts:opts.map(o=>({text:o,votes:{}})),author:member,ts:Date.now(),type:'poll'};state.notes=[poll,...state.notes];showPollCompose=false;pollOpts=['',''];pollQ='';renderContent();save();queueNotif('msg',member,q);}
@@ -1195,14 +1368,14 @@ function pingShop(){const sm=shopModeActive();if(!sm||sm.who!==member)return;if(
 function _sessionItems(sm){if(!sm)return[];return state.shop.filter(it=>it&&!it.done&&(it.ts||0)>=sm.startedAt);}
 function renderShopModeUI(){const sm=shopModeActive();if(!sm)return'';const m=getMem(sm.who);const time=timeAgo(sm.startedAt);const isMine=sm.who===member;const ping=_pingState(sm);const pingBtn=isMine?`<button class="shop-mode-ping" ${ping.can?'':'disabled'} onclick="pingShop()">${esc(ping.label)}</button>`:'';const endBtn=isMine?`<button class="shop-mode-end" onclick="endShopMode()">End</button>`:'';const actions=isMine?`<div class="shop-mode-actions">${pingBtn}${endBtn}</div>`:'';const banner=`<div class="shop-mode-banner" style="border-color:${m.color}88;background:${m.color}14"><span class="shop-mode-icon-big" style="background:${m.color}22;color:${m.color}">${iconSvg('cart',16)}</span><div class="shop-mode-text">${isMine?'You’re':`<b style="color:${m.color}">${esc(sm.who)}</b> is`} at the shops <span class="shop-mode-time">· started ${time}</span></div>${actions}</div>`;const items=_sessionItems(sm);if(!items.length)return banner;const rows=items.map(it=>{const am=getMem(it.addedBy);const qty=it.qty&&it.qty>1?`<span class="shop-mode-add-qty">×${it.qty}</span>`:'';return`<div class="shop-mode-add-row" onclick="toggleItem('${it.id}')"><button class="shop-mode-add-chk" style="border-color:${am.color}55"></button><span class="shop-mode-add-text">${esc(it.text)}${qty}</span><span class="shop-mode-add-by" style="color:${am.color}">${esc(it.addedBy)}</span></div>`;}).join('');const hdr=`<div class="shop-mode-additions-hdr">${items.length} added since ${isMine?'you arrived':`${esc(sm.who)} arrived`}</div>`;const additions=`<div class="shop-mode-additions" style="border-color:${m.color}55">${hdr}${rows}</div>`;return banner+additions;}
 function viewPhoto(b64){const m=document.createElement('div');m.className='photo-modal';m.innerHTML=`<img src="${b64}"><button class="photo-modal-close" onclick="this.parentElement.remove()">✕</button>`;m.onclick=e=>{if(e.target===m)m.remove();};document.body.appendChild(m);}
-function addItem(){const inp=document.getElementById('mi'),raw=inp?.value.trim();if(!raw)return;const isS=tabIdx===0,urg=isS?shopUrg:todoUrg;const text=raw;const autoCat=isS?suggestCat(text):'';const it={id:genId(),text,urgency:urg,cat:autoCat,addedBy:member,done:false,ts:Date.now()};if(isS)it.qty=1;if(isS)state.shop=[it,...state.shop];else state.todo=[it,...state.todo];if(isS){shopUrg=0;}else{todoUrg=0;}if(isS){state.itemHistory=state.itemHistory||{shop:{},todo:{}};state.itemHistory.shop=state.itemHistory.shop||{};const histK=_histK(text);if(histK)state.itemHistory.shop[histK]=(state.itemHistory.shop[histK]||0)+1;}inp.value='';shouldFocus=true;haptic(8);renderTabs();renderContent();save();const sm=isS?shopModeActive():null;if(sm){sendPushNotif(`${member} added: ${text}`,`Quick — ${sm.who} is at the shops`,member);}else{queueNotif(isS?'shop':'todo',member,text);}}
+function addItem(){const inp=document.getElementById('mi'),raw=inp?.value.trim();if(!raw)return;const isS=tabIdx===0,urg=isS?shopUrg:todoUrg;const text=raw;const autoCat=isS?suggestCat(text):'';const it={id:genId(),text,urgency:urg,cat:autoCat,addedBy:member,done:false,ts:Date.now()};if(isS)it.qty=1;if(isS)state.shop=[it,...state.shop];else state.todo=[it,...state.todo];if(isS){shopUrg=0;}else{todoUrg=0;}if(isS){state.itemHistory=state.itemHistory||{shop:{},todo:{}};state.itemHistory.shop=state.itemHistory.shop||{};const histK=_histK(text);if(histK)state.itemHistory.shop[histK]=(state.itemHistory.shop[histK]||0)+1;}inp.value='';drafts[isS?'shop':'todo']='';shouldFocus=true;haptic(8);renderTabs();renderContent();save();const sm=isS?shopModeActive():null;if(sm){sendPushNotif(`${member} added: ${text}`,`Quick — ${sm.who} is at the shops`,member);}else{queueNotif(isS?'shop':'todo',member,text);}}
 function setQty(e,id,delta){if(e){e.stopPropagation();}haptic(6);state.shop=state.shop.map(i=>i.id!==id?i:{...i,qty:Math.max(1,(i.qty||1)+delta)});renderContent();save();}
 function setUrg(i){const inp=document.getElementById('mi'),saved=inp?inp.value:'';if(tabIdx===0)shopUrg=i;else todoUrg=i;renderContent();const mi=document.getElementById('mi');if(mi&&saved){mi.value=saved;mi.focus();}}
 function cycleUrg(e,id){e.stopPropagation();haptic(8);const k=tabIdx===0?'shop':'todo';state[k]=state[k].map(i=>i.id!==id?i:{...i,urgency:((i.urgency??0)+1)%3});renderContent();save();}
 function toggleItem(id){haptic([8,20,8]);const k=tabIdx===0?'shop':'todo';const it=state[k].find(i=>i.id===id);if(!it)return;const nowDone=!it.done;state[k]=state[k].map(i=>i.id===id?{...i,done:nowDone,doneBy:nowDone?member:undefined}:i);if(nowDone){showUndoToast(`Ticked off "${it.text.slice(0,28)}"`,()=>{state[k]=state[k].map(i=>i.id===id?{...i,done:false,doneBy:undefined}:i);renderTabs();renderContent();save();});}renderTabs();renderContent();save();}
-function delItem(id){const k=tabIdx===0?'shop':'todo';state[k]=state[k].filter(i=>i.id!==id);renderTabs();renderContent();save();}
-function clearDone(){const k=tabIdx===0?'shop':'todo';state[k]=state[k].filter(i=>!i.done);renderTabs();renderContent();save();}
-function postNote(){const inp=document.getElementById('ni');const text=(inp?.value||'').trim();const image=pendingMsgUploading?null:pendingMsgImage;if((!text&&!image)||!inp)return;inp.value='';inp.focus();const note={id:genId(),text,author:member,ts:Date.now(),reactions:{}};if(image)note.image=image;if(replyingTo)note.replyTo={id:replyingTo.id,author:replyingTo.author,text:replyingTo.text||'',hasImage:!!replyingTo.hasImage};const replyClone=replyingTo;replyingTo=null;state.notes=[note,...state.notes];pendingMsgImage=null;pendingMsgUploading=false;haptic(8);const feed=document.querySelector('.msg-feed');if(feed){const auth=getMem(member);const div=document.createElement('div');div.className='nwrap mine';div.dataset.noteid=note.id;div.style.cssText='animation:itemIn .2s var(--ease) both';const imgHTML=image?`<img class="nimg" src="${esc(image)}" onclick="viewPhoto('${esc(image)}')">`:'';const textHTML=text?`<div class="ntext">${esc(text)}</div>`:'';const rt=replyClone?`<div class="nreplyto" onclick="scrollToNote('${esc(replyClone.id)}')"><span class="nreplyto-author" style="color:${getMem(replyClone.author).color}">${esc(replyClone.author)}</span><span class="nreplyto-text">${replyClone.hasImage?`<span class="nreplyto-img">${iconSvg('image',10)}</span>`:''}${esc(replyClone.text||(replyClone.hasImage?'(image)':'(message)'))}</span></div>`:'';div.innerHTML=`<div class="nhdr" style="flex-direction:row-reverse"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(member)}</span><span class="ntime">just now</span></div><div class="nbubble-col"><div class="nbubble mine${image&&!text&&!rt?' img-only':''}" style="background:${auth.color}18;border-color:${auth.color}44">${rt}${imgHTML}${textHTML}</div><div class="nbottom"><button class="ndel" onclick="delNote('${note.id}')">Delete</button><div class="nbottom-end"><button class="nreply" onclick="startReply('${note.id}')" title="Reply">${iconSvg('reply',12)}Reply</button><div class="rbar" id="rb${note.id}"><button class="radd" onclick="showPicker(event,'${note.id}')">+</button></div></div></div></div>`;feed.insertBefore(div,feed.firstChild);feed.querySelector('.empty')?.remove();const prev=document.querySelector('.msg-preview');if(prev)prev.remove();const rb=document.querySelector('.reply-bar');if(rb)rb.remove();}requestAnimationFrame(()=>{const again=document.getElementById('ni');if(again)again.focus();});save();queueNotif('msg',member,text||'(image)');renderTabs();}
+function delItem(id){const k=tabIdx===0?'shop':'todo';const idx=state[k].findIndex(i=>i.id===id);if(idx<0)return;const it=state[k][idx];state[k]=state[k].filter(i=>i.id!==id);renderTabs();renderContent();save();showUndoToast(`Deleted "${(it.text||'').slice(0,22)}"`,()=>{const arr=state[k].slice();arr.splice(Math.min(idx,arr.length),0,it);state[k]=arr;renderTabs();renderContent();save();});}
+function clearDone(){const k=tabIdx===0?'shop':'todo';const count=state[k].filter(i=>i.done).length;if(!count)return;showConfirmPopup(`Clear ${count} ticked-off item${count>1?'s':''}?`,()=>{state[k]=state[k].filter(i=>!i.done);haptic(8);renderTabs();renderContent();save();});}
+function postNote(){const inp=document.getElementById('ni');const text=(inp?.value||'').trim();const image=pendingMsgUploading?null:pendingMsgImage;if((!text&&!image)||!inp)return;inp.value='';drafts.msg='';inp.focus();const note={id:genId(),text,author:member,ts:Date.now(),reactions:{}};if(image)note.image=image;if(replyingTo)note.replyTo={id:replyingTo.id,author:replyingTo.author,text:replyingTo.text||'',hasImage:!!replyingTo.hasImage};const replyClone=replyingTo;replyingTo=null;state.notes=[note,...state.notes];pendingMsgImage=null;pendingMsgUploading=false;haptic(8);const feed=document.querySelector('.msg-feed');if(feed){const auth=getMem(member);const div=document.createElement('div');div.className='nwrap mine';div.dataset.noteid=note.id;div.style.cssText='animation:itemIn .2s var(--ease) both';const imgHTML=image?`<img class="nimg" src="${esc(image)}" onclick="viewPhoto('${esc(image)}')">`:'';const textHTML=text?`<div class="ntext">${esc(text)}</div>`:'';const rt=replyClone?`<div class="nreplyto" onclick="scrollToNote('${esc(replyClone.id)}')"><span class="nreplyto-author" style="color:${getMem(replyClone.author).color}">${esc(replyClone.author)}</span><span class="nreplyto-text">${replyClone.hasImage?`<span class="nreplyto-img">${iconSvg('image',10)}</span>`:''}${esc(replyClone.text||(replyClone.hasImage?'(image)':'(message)'))}</span></div>`:'';div.innerHTML=`<div class="nhdr" style="flex-direction:row-reverse"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(member)}</span><span class="ntime">just now</span></div><div class="nbubble-col"><div class="nbubble mine${image&&!text&&!rt?' img-only':''}" style="background:${auth.color}18;border-color:${auth.color}44">${rt}${imgHTML}${textHTML}</div><div class="nbottom-end"><div class="rbar" id="rb${note.id}"><button class="radd" onclick="showPicker(event,'${note.id}')">+</button></div></div></div>`;feed.insertBefore(div,feed.firstChild);bindNoteGestures(div);feed.querySelector('.empty')?.remove();const prev=document.querySelector('.msg-preview');if(prev)prev.remove();const rb=document.querySelector('.reply-bar');if(rb)rb.remove();}requestAnimationFrame(()=>{const again=document.getElementById('ni');if(again)again.focus();});save();queueNotif('msg',member,text||'(image)');renderTabs();}
 function delNote(id){state.notes=state.notes.filter(n=>n.id!==id);renderContent();save();}
 function setFilter(n){const arr=tabIdx===0?shopFilters:todoFilters;if(n==='All'){arr.length=0;}else{const i=arr.indexOf(n);if(i>=0)arr.splice(i,1);else arr.push(n);}renderContent();if(filterSheetOpen)renderFilterSheetContent();}
 function hasActiveFilters(){if(tabIdx===0)return shopFilters.length>0||shopCats.length>0||shopSort!=='recency-desc';if(tabIdx===1)return todoFilters.length>0||todoSort!=='urgency-desc';return false;}
@@ -1259,7 +1432,7 @@ function showInstallPopup(){
   requestAnimationFrame(()=>back.classList.add('open'));
 }
 async function initPush(){if(!('serviceWorker' in navigator)||!('PushManager' in window))return;if(Notification.permission!=='granted')return;try{if(!swReg)swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});await navigator.serviceWorker.ready;let sub=await swReg.pushManager.getSubscription();if(!sub){try{sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});}catch(e){return;}}const key=sub.endpoint.split('/').pop().replace(/[^a-zA-Z0-9]/g,'').slice(-20)||'sub'+Date.now();await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...sub.toJSON(),member,refreshedAt:Date.now()})});}catch(e){}}
-async function init(){try{initTheme();}catch(e){}showScreen('loading');const cache=loadCache();if(cache){state=cache.state;}try{await initSW();}catch(e){}try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{}},shopMode:d.shopMode||null};lastTs=d.updatedAt;cacheState();setStatus('live');setOffline(false);}catch(e){if(!cache){setStatus('error');renderLogin();showScreen('login');return;}setStatus('offline');setOffline(true);}try{renderLogin();const saved=localStorage.getItem('cfh_member');const ok=saved&&MEMBERS.find(m=>m.name===saved);if(ok){selectMember(saved);}else{showScreen('login');}startPoll();}catch(e){showScreen('login');}try{initPush();}catch(e){}try{checkVersionUpdate();}catch(e){}try{checkInstallPrompt();}catch(e){}window.addEventListener('online',()=>{setOffline(false);setStatus('live');save();});window.addEventListener('offline',()=>{setOffline(true);setStatus('offline');});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}else if(member){try{initPush();}catch(e){}if(!pollTimer)startPoll();(async()=>{try{const d=await fbRead();if(d.updatedAt>lastTs){lastTs=d.updatedAt;state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{}},shopMode:d.shopMode||null};cacheState();renderContent();renderTabs();}setOffline(false);}catch(e){setOffline(!navigator.onLine);}})();}});}
+async function init(){try{syncDvh();window.addEventListener('resize',syncDvh);window.addEventListener('orientationchange',syncDvh);window.addEventListener('load',()=>{syncDvh();setTimeout(syncDvh,80);setTimeout(syncDvh,400);});if(window.visualViewport){window.visualViewport.addEventListener('resize',syncDvh);}}catch(e){}try{initTheme();}catch(e){}showScreen('loading');const cache=loadCache();if(cache){state=cache.state;}try{await initSW();}catch(e){}try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{}},shopMode:d.shopMode||null};lastTs=d.updatedAt;cacheState();setStatus('live');setOffline(false);}catch(e){if(!cache){setStatus('error');renderLogin();showScreen('login');return;}setStatus('offline');setOffline(true);}try{renderLogin();const saved=localStorage.getItem('cfh_member');const ok=saved&&MEMBERS.find(m=>m.name===saved);if(ok){selectMember(saved);}else{showScreen('login');}startPoll();}catch(e){showScreen('login');}try{initPush();}catch(e){}try{checkVersionUpdate();}catch(e){}try{checkInstallPrompt();}catch(e){}window.addEventListener('online',()=>{setOffline(false);setStatus('live');save();});window.addEventListener('offline',()=>{setOffline(true);setStatus('offline');});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}else if(member){try{initPush();}catch(e){}if(!pollTimer)startPoll();(async()=>{try{const d=await fbRead();if(d.updatedAt>lastTs){lastTs=d.updatedAt;state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{}},shopMode:d.shopMode||null};cacheState();renderContent();renderTabs();}setOffline(false);}catch(e){setOffline(!navigator.onLine);}})();}});}
 init();
 </script>
 </body>
