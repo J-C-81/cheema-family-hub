@@ -120,6 +120,12 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v7.0.7 - Fix white strip at the bottom of the screen on iOS first
+            load. <html> had no background, so during the brief
+            window before --vh/dvh settled and body filled the
+            visible viewport, the gap showed the UA default white.
+            <html> now inherits the same --bg as body so any
+            first-paint gap is invisible in both light and dark.
   v7.0.6 - Real fix for the shop-mode pill being pushed up on first
             paint: the FAB used to render inside #content, which
             briefly gets a transform (entry slide / tab swipe), and
@@ -597,7 +603,7 @@
   --shadow:0 4px 24px rgba(0,0,0,.5);--shadow-lg:0 12px 48px rgba(0,0,0,.65);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
-html,body{overflow-x:hidden}
+html,body{overflow-x:hidden;background:var(--bg)}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;min-height:var(--vh,100dvh);overscroll-behavior:none;transition:background .3s var(--ease),color .3s var(--ease)}
 button,input,textarea,select{font-family:inherit;color:inherit}
 input::placeholder,textarea::placeholder{color:var(--muted)}
@@ -928,7 +934,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.0.6';
+const VER='v7.0.7';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#3b82f6'},{name:'Jiv',initials:'J',color:'#f97316'},{name:'Rajan(Midget)',initials:'R',color:'#ef4444'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
