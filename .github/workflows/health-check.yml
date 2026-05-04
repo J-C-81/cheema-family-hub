@@ -1,0 +1,115 @@
+name: Health Check
+
+# Probes the three pieces every 15 minutes:
+#   - Firebase RTDB (read /cheema/updatedAt.json with FB_AUTH)
+#   - cfh-push Worker (GET / — 405 means the worker is alive)
+#   - GitHub Pages site (GET /index.html)
+# If anything's down, opens (or comments on) a single open GitHub issue.
+# When everything's healthy again, comments and closes any open one.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Firebase
+        id: fb
+        env:
+          FB_AUTH: ${{ secrets.FB_AUTH }}
+        run: |
+          set +e
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+            "https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema/updatedAt.json?auth=${FB_AUTH}")
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" = "200" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Probe Worker
+        id: worker
+        run: |
+          set +e
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://cfh-push.jivancheemalfc.workers.dev/")
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          # Worker returns 405 for GET /. Any 4xx means it's running. 5xx / 0 / timeout is bad.
+          if [ "$CODE" -ge 400 ] && [ "$CODE" -lt 500 ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Probe Pages site
+        id: site
+        run: |
+          set +e
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://j-c-81.github.io/cheema-family-hub/index.html")
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" = "200" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Open / comment health issue if anything is down
+        if: ${{ steps.fb.outputs.ok != 'true' || steps.worker.outputs.ok != 'true' || steps.site.outputs.ok != 'true' }}
+        uses: actions/github-script@v7
+        env:
+          FB_OK: ${{ steps.fb.outputs.ok }}
+          FB_CODE: ${{ steps.fb.outputs.code }}
+          W_OK: ${{ steps.worker.outputs.ok }}
+          W_CODE: ${{ steps.worker.outputs.code }}
+          S_OK: ${{ steps.site.outputs.ok }}
+          S_CODE: ${{ steps.site.outputs.code }}
+        with:
+          script: |
+            const fbOk = process.env.FB_OK === 'true';
+            const wOk = process.env.W_OK === 'true';
+            const sOk = process.env.S_OK === 'true';
+            const status =
+              `- Firebase: ${fbOk ? '✅ OK' : `❌ DOWN (${process.env.FB_CODE})`}\n` +
+              `- Worker:   ${wOk ? '✅ OK' : `❌ DOWN (${process.env.W_CODE})`}\n` +
+              `- Site:     ${sOk ? '✅ OK' : `❌ DOWN (${process.env.S_CODE})`}`;
+            const TITLE = 'Health check: service down';
+            const search = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${TITLE}"`
+            });
+            const found = (search.data.items || []).find(i => i.title === TITLE);
+            const body = `Last check: ${new Date().toISOString()}\n\n${status}`;
+            if (found) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: found.number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: TITLE,
+                body
+              });
+            }
+
+      - name: Close health issue if everything is healthy
+        if: ${{ steps.fb.outputs.ok == 'true' && steps.worker.outputs.ok == 'true' && steps.site.outputs.ok == 'true' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const TITLE = 'Health check: service down';
+            const search = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${TITLE}"`
+            });
+            for (const issue of (search.data.items || [])) {
+              if (issue.title !== TITLE) continue;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `All services healthy as of ${new Date().toISOString()} — closing.`
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed'
+              });
+            }

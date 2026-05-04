@@ -1,0 +1,69 @@
+name: Daily Backup
+
+# Pulls /cheema.json from Firebase once a day and commits it to the
+# `backups` branch as backups/cheema-YYYY-MM-DD.json. Keeps the 30
+# most recent files. Manual workflow_dispatch is for testing.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Switch to or create backups branch
+        run: |
+          set -euo pipefail
+          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git fetch origin
+          if git rev-parse --verify origin/backups >/dev/null 2>&1; then
+            git checkout -B backups origin/backups
+          else
+            git checkout --orphan backups
+            git rm -rf . 2>/dev/null || true
+            printf '# Daily Backups\n\nAutomated snapshots of /cheema.json. Last 30 days are kept.\n' > README.md
+            git add README.md
+            git commit -m "init backups branch"
+            git push -u origin backups
+          fi
+
+      - name: Pull snapshot
+        env:
+          FB_AUTH: ${{ secrets.FB_AUTH }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FB_AUTH:-}" ]; then
+            echo "ERROR: FB_AUTH secret not set on the repo." >&2
+            exit 1
+          fi
+          mkdir -p backups
+          DATE=$(date -u +%Y-%m-%d)
+          curl -fsSL "https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json?auth=${FB_AUTH}" \
+            -o "backups/cheema-${DATE}.json"
+          test -s "backups/cheema-${DATE}.json"
+
+      - name: Prune older than 30 most recent
+        run: |
+          set -euo pipefail
+          ls -1 backups/cheema-*.json 2>/dev/null | sort -r | tail -n +31 | xargs -r rm -f
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git add backups/
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git commit -m "backup: $(date -u +%Y-%m-%d)"
+          git push origin backups
