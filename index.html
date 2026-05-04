@@ -120,6 +120,19 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v7.0.9 - Blank strip at the bottom kept coming back when adding
+            items, mostly because body's min-height was tied to
+            --vh (a JS-set value that follows visualViewport). On
+            iOS the viewport bounces around during keyboard
+            show/hide and innerHTML rebuilds, and the resize event
+            doesn't always fire reliably — so --vh would get stuck
+            at a stale shrunken value and body stayed short. Body
+            and .screen now use a flat 100lvh (largest-viewport
+            unit). In a standalone PWA that equals the visible
+            viewport, and since both the shop/todo input and the
+            messages composer sit at the top of content there's no
+            need for body to shrink with the keyboard. nudgeLayout
+            updated to match.
   v7.0.8 - Follow-up to v7.0.7: white strip at the bottom came back
             while the "What's New" popup was on screen. The backdrop
             (.app-popup-back) was relying on `inset:0`, but iOS
@@ -613,11 +626,11 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
 html,body{overflow-x:hidden;background:var(--bg)}
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;min-height:var(--vh,100dvh);overscroll-behavior:none;transition:background .3s var(--ease),color .3s var(--ease)}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;min-height:100lvh;overscroll-behavior:none;transition:background .3s var(--ease),color .3s var(--ease)}
 button,input,textarea,select{font-family:inherit;color:inherit}
 input::placeholder,textarea::placeholder{color:var(--muted)}
 ::-webkit-scrollbar{display:none}
-.screen{display:none;min-height:100dvh;min-height:var(--vh,100dvh)}
+.screen{display:none;min-height:100dvh;min-height:100lvh}
 .screen.active{display:flex;flex-direction:column}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes scaleIn{from{opacity:0;transform:scale(.9) translateY(16px)}to{opacity:1;transform:none}}
@@ -943,7 +956,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.0.8';
+const VER='v7.0.9';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#3b82f6'},{name:'Jiv',initials:'J',color:'#f97316'},{name:'Rajan(Midget)',initials:'R',color:'#ef4444'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -964,7 +977,7 @@ let notifDismissed=false,swReg=null,shouldFocus=false,showNoticeCompose=false,sh
 let pendingMsgImage=null,pendingMsgUploading=false;
 let undoTimer=null,lastReadNotes=0;
 function syncDvh(){try{const h=(window.visualViewport&&window.visualViewport.height)||window.innerHeight;document.documentElement.style.setProperty('--vh',h+'px');}catch(e){}}
-function nudgeLayout(){try{syncDvh();const c=document.getElementById('content');if(c){const t=c.scrollTop;c.scrollTop=t+1;c.scrollTop=t;}document.body.style.minHeight='calc(var(--vh,100dvh) + 0.5px)';requestAnimationFrame(()=>{document.body.style.minHeight='';syncDvh();});}catch(e){}}
+function nudgeLayout(){try{syncDvh();const c=document.getElementById('content');if(c){const t=c.scrollTop;c.scrollTop=t+1;c.scrollTop=t;}document.body.style.minHeight='calc(100lvh + 0.5px)';requestAnimationFrame(()=>{document.body.style.minHeight='';syncDvh();});}catch(e){}}
 function syncShopFab(){try{const cur=document.getElementById('shop-fab');const show=member&&tabIdx===0&&!shopModeActive();if(show){if(!cur){const btn=document.createElement('button');btn.id='shop-fab';btn.className='shop-mode-fab';btn.title="I'm at the shops";btn.innerHTML=iconSvg('cart',16)+'<span>At the shops</span>';btn.onclick=startShopMode;document.body.appendChild(btn);}}else if(cur){cur.remove();}}catch(e){}}
 function initTheme(){syncThemeBtn();}
 function toggleTheme(){haptic([8,40,8]);const d=document.documentElement.classList.toggle('dark');localStorage.setItem('cfh-theme',d?'dark':'light');document.getElementById('tmeta').content=d?'#09090c':'#eef2ff';syncThemeBtn();}
