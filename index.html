@@ -120,6 +120,19 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v7.0.10 - Defensive fixes for the intermittent crash when changing
+            profiles. The old flow let doLogout and selectMember
+            re-enter while the previous switch's 200ms timeout
+            chain (renderTabs + renderContent + nudgeLayout x3 +
+            content fade animation + push subscription) was still
+            firing — overlapping DOM rebuilds and animations seem
+            to be enough to wedge the WebKit content process on
+            iOS PWAs. Now: a _switching flag blocks re-entry, the
+            inner setTimeout body is wrapped in try/catch so a
+            single failure can't take the page down, the
+            background poll is paused on logout and resumed on
+            login so it can't race with the switch, and DOM lookup
+            null-guards added throughout.
   v7.0.9 - Blank strip at the bottom kept coming back when adding
             items, mostly because body's min-height was tied to
             --vh (a JS-set value that follows visualViewport). On
@@ -956,7 +969,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.0.9';
+const VER='v7.0.10';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#3b82f6'},{name:'Jiv',initials:'J',color:'#f97316'},{name:'Rajan(Midget)',initials:'R',color:'#ef4444'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -1015,9 +1028,10 @@ async function sendPushNotif(title,body,addedBy){if(!PUSH_RELAY)return;try{fetch
 let notifBatch=[],notifTimer2=null;
 function queueNotif(type,who,text){notifBatch.push({type,who,text});if(notifTimer2)clearTimeout(notifTimer2);notifTimer2=setTimeout(()=>{const b=[...notifBatch];notifBatch=[];if(!b.length)return;const groups={};for(const x of b){const k=x.type+'|'+x.who;(groups[k]=groups[k]||{type:x.type,who:x.who,items:[]}).items.push(x.text);}const gs=Object.values(groups);const section={shop:'Shopping',todo:'To-Do'},word={shop:'items',todo:'tasks'};let title,body;if(gs.length===1){const g=gs[0],n=g.items.length;if(g.type==='msg'){title=n===1?g.who:`${g.who} sent ${n} messages`;body=n===1?g.items[0]:'';}else{title=n===1?`${g.who} added to ${section[g.type]}`:`${g.who} added ${n} ${word[g.type]} to ${section[g.type]}`;body=n===1?g.items[0]:'';}}else{title='Family Hub';body=gs.map(g=>{const n=g.items.length;if(g.type==='msg')return n===1?`${g.who}: ${g.items[0]}`:`${g.who} sent ${n} messages`;return n===1?`${g.who} added to ${section[g.type]}: ${g.items[0]}`:`${g.who} added ${n} to ${section[g.type]}`;}).join(' · ');}sendPushNotif(title,body,member);},8000);}
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
-function doLogout(){member=null;syncShopFab();renderLogin();showScreen('login');}
+let _switching=false;
+function doLogout(){if(_switching)return;try{if(pollTimer){clearInterval(pollTimer);pollTimer=null;}member=null;syncShopFab();renderLogin();showScreen('login');}catch(e){}}
 function renderLogin(){const g=document.getElementById('mgrid');g.innerHTML=MEMBERS.map(m=>`<button class="mbtn" id="mb${m.initials}" onclick="selectMember('${esc(m.name)}')"><div class="av" style="width:50px;height:50px;background:${m.color}18;border:2px solid ${m.color}55;font-size:20px;color:${m.color};border-radius:28%">${m.initials}</div><span class="mname" style="color:${m.color}">${esc(m.name)}</span></button>`).join('');MEMBERS.forEach(m=>{const b=document.getElementById('mb'+m.initials);if(!b)return;const on=()=>{b.style.borderColor=m.color;b.style.background=m.color+'10';b.style.boxShadow=`0 4px 20px ${m.color}22`;b.querySelector('.av').style.transform='scale(1.1)';};const off=()=>{b.style.borderColor='';b.style.background='';b.style.boxShadow='';b.querySelector('.av').style.transform='';};b.addEventListener('mouseenter',on);b.addEventListener('mouseleave',off);b.addEventListener('touchstart',on,{passive:true});b.addEventListener('touchend',()=>setTimeout(off,260));});}
-function selectMember(name){member=name;haptic(10);localStorage.setItem('cfh_member',name);const m=getMem(name);lastReadNotes=parseInt(localStorage.getItem('cfh_read_'+name)||'0');const ha=document.getElementById('hav'),hn=document.getElementById('hname'),hicon=document.getElementById('hicon');ha.style.cssText=`width:22px;height:22px;border-radius:7px;background:${m.color}20;border:1.5px solid ${m.color}55;font-size:9px;color:${m.color};font-weight:800`;ha.textContent=m.initials;hn.textContent=name;hicon.style.background=`linear-gradient(145deg,${m.color},${m.color}88)`;const card=document.querySelector('.login-card');if(card){card.style.transition='opacity .2s ease,transform .2s ease';card.style.opacity='0';card.style.transform='scale(.95) translateY(-10px)';}setTimeout(()=>{renderTabs();renderContent();showScreen('app');nudgeLayout();setTimeout(nudgeLayout,120);setTimeout(nudgeLayout,500);const c=document.getElementById('content');c.style.transition='none';c.style.opacity='0';c.style.transform='translateY(12px)';requestAnimationFrame(()=>requestAnimationFrame(()=>{c.style.transition='opacity .28s ease,transform .28s ease';c.style.opacity='1';c.style.transform='none';}));if('Notification' in window){if(isStandalone()&&Notification.permission==='default')setTimeout(()=>subscribePush().then(ok=>ok&&renderContent()),1500);else if(Notification.permission==='granted')setTimeout(()=>initPush(),200);}},200);}
+function selectMember(name){if(_switching)return;_switching=true;try{member=name;haptic(10);localStorage.setItem('cfh_member',name);const m=getMem(name);lastReadNotes=parseInt(localStorage.getItem('cfh_read_'+name)||'0');const ha=document.getElementById('hav'),hn=document.getElementById('hname'),hicon=document.getElementById('hicon');if(ha){ha.style.cssText=`width:22px;height:22px;border-radius:7px;background:${m.color}20;border:1.5px solid ${m.color}55;font-size:9px;color:${m.color};font-weight:800`;ha.textContent=m.initials;}if(hn)hn.textContent=name;if(hicon)hicon.style.background=`linear-gradient(145deg,${m.color},${m.color}88)`;const card=document.querySelector('.login-card');if(card){card.style.transition='opacity .2s ease,transform .2s ease';card.style.opacity='0';card.style.transform='scale(.95) translateY(-10px)';}setTimeout(()=>{try{renderTabs();renderContent();showScreen('app');nudgeLayout();setTimeout(()=>{try{nudgeLayout();}catch(e){}},120);setTimeout(()=>{try{nudgeLayout();}catch(e){}},500);const c=document.getElementById('content');if(c){c.style.transition='none';c.style.opacity='0';c.style.transform='translateY(12px)';requestAnimationFrame(()=>requestAnimationFrame(()=>{c.style.transition='opacity .28s ease,transform .28s ease';c.style.opacity='1';c.style.transform='none';}));}if(!pollTimer)startPoll();if('Notification' in window){if(isStandalone()&&Notification.permission==='default')setTimeout(()=>{try{subscribePush().then(ok=>ok&&renderContent());}catch(e){}},1500);else if(Notification.permission==='granted')setTimeout(()=>{try{initPush();}catch(e){}},200);}}catch(e){}finally{_switching=false;}},200);}catch(e){_switching=false;}}
 let _lastContentHash=null,_lastContentTab=null,_lastTabsHash=null;
 function _hash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return h;}
 function applyContent(c,html,post){const h=_hash(html);if(_lastContentHash===h&&_lastContentTab===tabIdx)return false;_lastContentHash=h;_lastContentTab=tabIdx;const sy=c.scrollTop;c.innerHTML=html;if(sy)c.scrollTop=sy;if(post)post();return true;}
