@@ -4,7 +4,7 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
-  CURRENT VERSION: v7.1.1
+  CURRENT VERSION: v7.1.2
   (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
    THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
    Do NOT infer the version from the changelog below — it can lag if
@@ -53,17 +53,15 @@
                           / showConfirmPopup(msg,onYes) — small popup
                           helpers used for hold-menus, edit dialogs
                           and the Clear-all confirm.
-  - addPhoto(itemId)    — for items: opens showPhotoSourcePicker as a
-                          small floating menu anchored to the item's
-                          camera button (Phone / Camera). The chosen
-                          source routes through _pickAndProcessItemPhoto
-                          which uses FileReader (more reliable on iOS
-                          than blob URLs) and a toBlob fallback so the
-                          first capture lands consistently.
-  - showPhotoSourcePicker(targetEl,opts) — small action-menu-style
-                          chooser (Phone / Camera) anchored next to the
-                          trigger. Built on showActionMenu so it auto-
-                          dismisses on outside tap / scroll.
+  - addPhoto(itemId)    — for items: opens a plain file input with no
+                          `capture` attribute, so iOS / Android show
+                          their own combined Camera + Photo Library
+                          sheet. The selected file goes through
+                          _processItemPhotoFile which decodes locally
+                          for an instant preview, falls back to raw
+                          upload on decode failure (HEIC, broken MIME,
+                          read/load timeout), and posts to the
+                          Cloudflare /photo endpoint.
   - blockSuggestion(i)  — the × on a typed-suggestion chip. Adds the
                           item key to state.itemHistory.shopBlocked so
                           it never shows up as a suggestion again.
@@ -143,6 +141,28 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v7.1.2 - Five follow-ups to v7.1.1: (1) The inline Pin / Delete-poll
+            buttons under poll bubbles are gone. Long-press a poll
+            instead — the action menu now has Pin/Unpin (anyone) plus
+            Edit/Delete (own polls), keeping it consistent with how
+            normal messages work. (2) The in-app photo-source picker
+            (Phone Library / Camera) is gone too. Tapping the camera
+            icon now opens iOS / Android's own combined sheet directly,
+            so you go straight to the system picker instead of a popup
+            inside a popup. (3) Camera-capture pipeline hardened:
+            8-second timeouts on FileReader / Image-load, an
+            empty-file guard, and a raw-upload fallback so HEIC and
+            other formats the browser can't decode locally still
+            upload (the URL just appears once the upload finishes).
+            (4) Pull-to-refresh trigger is more responsive — the
+            recent-scroll guard introduced in v7.1.0 was over-
+            corrective and was sometimes blocking PTR after settling;
+            the existing scrollTop checks during the gesture are
+            enough on their own. (5) Tab swipes are now interruptible:
+            instead of queueing the next tab to fire after the current
+            slide finishes, a fresh swipe instantly cleans up the in-
+            flight slide and starts the new one. Slide duration also
+            dropped 320ms → 220ms.
   v7.1.1 - Three follow-ups to v7.1.0: (1) Photo Library is gone — no
             more saved-photo grid, no more Firebase photoLibrary node,
             no more "From Library" option in the picker. Adding a photo
@@ -1044,7 +1064,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.1.1';
+const VER='v7.1.2';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#3b82f6'},{name:'Jiv',initials:'J',color:'#f97316'},{name:'Rajan(Midget)',initials:'R',color:'#ef4444'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -1129,35 +1149,32 @@ function _hash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(
 function applyContent(c,html,post){const h=_hash(html);if(_lastContentHash===h&&_lastContentTab===tabIdx)return false;_lastContentHash=h;_lastContentTab=tabIdx;const sy=c.scrollTop;c.innerHTML=html;if(sy)c.scrollTop=sy;if(post)post();return true;}
 function renderTabs(){const acc=TABS[tabIdx].accent;document.getElementById('mhdr').style.borderBottomColor=acc;const unread=state.notes.some(n=>n.ts>lastReadNotes&&n.author!==member);const sc=state.shop.filter(x=>!x.done).length,tc=state.todo.filter(x=>!x.done).length;let html=TABS.map((t,i)=>{const active=tabIdx===i,cnt=i===0?sc:i===1?tc:0,hasUnread=i===2&&unread&&tabIdx!==2;return`<button class="tab-btn" onclick="setTab(${i})" style="color:${active?t.accent:'var(--muted)'};border-bottom-color:${active?t.accent:'transparent'};${active?`background:${t.accent}0c`:''}"><span class="tab-icn">${t.icon}</span>${esc(t.label)}${cnt>0?`<span class="tab-cnt" style="background:${active?t.accent+'22':'var(--surf2)'};color:${active?t.accent:'var(--muted)'};border:1px solid ${active?t.accent+'44':'var(--brd)'}">${cnt}</span>`:''}${hasUnread?`<span style="width:7px;height:7px;background:#ef4444;border-radius:50%;display:inline-block;margin-left:1px;flex-shrink:0"></span>`:''}</button>`;}).join('');document.getElementById('tabs').innerHTML=html;const as=document.getElementById('acc-strip');if(as)as.style.background=acc;}
 function cancelPull(){const bar=document.getElementById("ptr-bar"),glow=document.getElementById("ptr-glow"),c=document.getElementById("content");if(bar){bar.style.transition="none";bar.style.opacity="0";bar.style.transform="scaleX(0)";}if(glow){glow.remove();}if(c){c.style.transition="transform .3s ease";c.style.transform="";}ptrPulling=false;}
-let _pendingTab=null;
+let _slideCleanup=null,_slideTimer=null;
 async function setTab(i){
-  if(i===tabIdx&&!transitioning){_pendingTab=null;return;}
-  // Queue rapid back-to-back swipes so the second tap doesn't get dropped while
-  // the previous slide is still mid-flight; we'll fire it the moment the
-  // current transition finishes.
-  if(transitioning){_pendingTab=i;return;}
+  if(i===tabIdx&&!transitioning)return;
+  // Interrupt any in-flight slide so back-to-back swipes feel instant — finish
+  // the previous transition's cleanup synchronously, then immediately start
+  // the new one. The previous queue-based approach had to wait out the full
+  // SLIDE_MS before honouring the next swipe, which felt laggy.
+  if(transitioning&&_slideCleanup){_slideCleanup();}
   if(filterSheetOpen)closeFilterSheet();
   captureDraftsForCurrentTab();
   haptic(6);
   transitioning=true;
   const dir=i>tabIdx?1:-1;
   const c=document.getElementById('content');
-  // Snapshot current tab as a ghost pane
   const ghost=document.createElement('div');
   ghost.className='tab-ghost';
   ghost.innerHTML=c.innerHTML;
-  // Match current scroll position so the ghost doesn't jump
   ghost.scrollTop=c.scrollTop;
   c.parentNode.insertBefore(ghost,c.nextSibling);
-  // Swap content
   tabIdx=i;
   if(i===2){lastReadNotes=Date.now();localStorage.setItem('cfh_read_'+member,lastReadNotes);}
   renderTabs();
   renderContent();
   c.scrollTop=0;
-  // Prepare slide: new content starts offscreen, ghost starts in view
   const SLIDE_EASE='cubic-bezier(.22,1,.36,1)';
-  const SLIDE_MS=320;
+  const SLIDE_MS=220;
   c.style.transition='none';
   c.style.transform=`translate3d(${dir*100}%,0,0) scale(.94)`;
   c.style.opacity='0.4';
@@ -1165,27 +1182,21 @@ async function setTab(i){
   ghost.style.transform='translate3d(0,0,0) scale(1)';
   ghost.style.opacity='1';
   ghost.style.transformOrigin=dir>0?'right center':'left center';
-  // Force reflow so the initial positions apply
   void c.offsetHeight;
-  // Animate both in tandem
   c.style.transition=`transform ${SLIDE_MS}ms ${SLIDE_EASE},opacity ${Math.round(SLIDE_MS*0.7)}ms ease-out`;
   ghost.style.transition=`transform ${SLIDE_MS}ms ${SLIDE_EASE},opacity ${Math.round(SLIDE_MS*0.7)}ms ease-out`;
   c.style.transform='translate3d(0,0,0) scale(1)';
   c.style.opacity='1';
   ghost.style.transform=`translate3d(${-dir*100}%,0,0) scale(.94)`;
   ghost.style.opacity='0.4';
-  setTimeout(()=>{
-    ghost.remove();
-    c.style.transition='';
-    c.style.transform='';
-    c.style.opacity='';
-    c.style.transformOrigin='';
+  _slideCleanup=()=>{
+    if(_slideTimer){clearTimeout(_slideTimer);_slideTimer=null;}
+    if(ghost.parentNode)ghost.remove();
+    c.style.transition='';c.style.transform='';c.style.opacity='';c.style.transformOrigin='';
     transitioning=false;
-    if(_pendingTab!=null){
-      const nx=_pendingTab;_pendingTab=null;
-      if(nx!==tabIdx)setTab(nx);
-    }
-  },SLIDE_MS+10);
+    _slideCleanup=null;
+  };
+  _slideTimer=setTimeout(()=>{if(_slideCleanup)_slideCleanup();},SLIDE_MS+10);
 }
 function setSort(v){if(tabIdx===0)shopSort=v;else todoSort=v;renderContent();if(filterSheetOpen)renderFilterSheetContent();}
 function notifBar(){if(notifDismissed||!('Notification' in window))return'';if(Notification.permission==='granted')return'';if(!isStandalone()&&isIOS())return`<div class="notif-bar"><span class="notif-bar-txt">Open from home screen icon to enable notifications</span><button class="notif-bar-dis" onclick="notifDismissed=true;renderContent()">✕</button></div>`;return`<div class="notif-bar"><span class="notif-bar-txt">Tap to get notifications</span><button class="notif-bar-act" onclick="doEnableNotifs()">Enable</button><button class="notif-bar-dis" onclick="notifDismissed=true;renderContent()">✕</button></div>`;}
@@ -1327,29 +1338,31 @@ function showPollEditPopup(poll,onSave){
   const close=()=>back.remove();
   back.addEventListener('click',e=>{if(e.target===back)close();});
 }
-function _pickMsgPhotoForEdit(useCamera,onUrl){
-  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';if(useCamera)inp.capture='environment';
+function _pickMsgPhotoForEdit(onUrl){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
   inp.onchange=async e=>{
-    const file=e.target.files&&e.target.files[0];if(!file){inp.value='';return;}
+    const file=e.target.files&&e.target.files[0];inp.value='';
+    if(!file||!file.size)return;
     const isGif=(file.type==='image/gif')||/\.gif$/i.test(file.name||'');
     showToast('Uploading photo…');
-    try{
-      let blob=file;
-      if(!isGif){
-        const dataUrl=await _readFileAsDataUrl(file);
-        const img=await _loadImage(dataUrl);
+    let blob=file;
+    if(!isGif){
+      try{
+        const dataUrl=await _withTimeout(_readFileAsDataUrl(file),8000,'read');
+        const img=await _withTimeout(_loadImage(dataUrl),8000,'img');
         const MAX=720,ratio=Math.min(MAX/img.width,MAX/img.height,1);
         const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*ratio));c.height=Math.max(1,Math.round(img.height*ratio));c.getContext('2d').drawImage(img,0,0,c.width,c.height);
         const compressed=await new Promise(r=>c.toBlob(r,'image/jpeg',0.85));
-        blob=compressed||file;
-      }
+        if(compressed)blob=compressed;
+      }catch(err){blob=file;}
+    }
+    try{
       const ct=blob.type||(isGif?'image/gif':'image/jpeg');
       const res=await fetch(PUSH_RELAY+'/photo',{method:'POST',headers:{'Content-Type':ct},body:blob,signal:AbortSignal.timeout(30000)});
       if(!res.ok)throw new Error('upload');
       const d=await res.json();if(!d||!d.url)throw new Error('no url');
       onUrl(d.url);
     }catch(err){showToast('Photo upload failed — try again');}
-    finally{inp.value='';}
   };
   inp.click();
 }
@@ -1370,10 +1383,7 @@ function showMsgEditPopup(initialText,initialImage,onSave){
   refresh();
   rmBtn.onclick=()=>{curImage='';refresh();};
   addBtn.onclick=()=>{
-    showPhotoSourcePicker(addBtn,{
-      onPhone:()=>_pickMsgPhotoForEdit(false,url=>{curImage=url;refresh();}),
-      onCamera:()=>_pickMsgPhotoForEdit(true,url=>{curImage=url;refresh();})
-    });
+    _pickMsgPhotoForEdit(url=>{curImage=url;refresh();});
   };
   requestAnimationFrame(()=>back.classList.add('open'));
   setTimeout(()=>{ta.focus();const v=ta.value;ta.setSelectionRange(v.length,v.length);},80);
@@ -1400,6 +1410,7 @@ function bindNoteGestures(noteEl){
       const items=[];
       if(isMine)items.push({label:'Edit',fn:()=>isPoll?editPoll(id):editNote(id)});
       if(!isPoll)items.push({label:'Reply',fn:()=>startReply(id)});
+      if(isPoll)items.push({label:n.pinned?'Unpin':'Pin',fn:()=>togglePinPoll(id)});
       if(isMine)items.push({label:'Delete',danger:true,fn:()=>delNote(id)});
       if(!items.length)return;
       haptic([12,30,12]);
@@ -1554,9 +1565,8 @@ function initPullRefresh(){
   if(!c||c._ptr)return;c._ptr=true;
   // Old bigger glow element is gone — clean up if a previous render left one behind
   document.getElementById('ptr-glow')?.remove();
-  let sy=0,sx2=0,triggered=false,startedAtTop=false,_lastScrollTs=0;
+  let sy=0,sx2=0,triggered=false;
   function memberColor(){return member?getMem(member).color:(TABS[tabIdx].accent||'#0ea5e9');}
-  c.addEventListener('scroll',()=>{_lastScrollTs=Date.now();},{passive:true});
 
   let bar=document.getElementById('ptr-bar');
   if(!bar){
@@ -1571,16 +1581,15 @@ function initPullRefresh(){
     bar.style.transition='opacity .3s';bar.style.opacity='0';
     c.style.transition='transform .3s cubic-bezier(.32,.72,.18,1)';c.style.transform='';
     setTimeout(()=>{c.style.transition='';bar.style.transition='none';setPct(0);},320);
-    ptrPulling=false;triggered=false;startedAtTop=false;
+    ptrPulling=false;triggered=false;
   }
 
   c.addEventListener('touchstart',e=>{
-    // Strict: only arm PTR when the finger lands while the list is genuinely
-    // at the top, momentum scroll has settled, and no refresh is in flight.
-    // Without the recent-scroll guard, a fast scroll-up that bounces past 0
-    // would arm PTR on the same gesture.
-    startedAtTop=(c.scrollTop===0)&&(Date.now()-_lastScrollTs>180);
-    if(!startedAtTop||ptrRefreshing)return;
+    // Arm PTR whenever the finger lands while the list is at the top and no
+    // refresh is in flight. The touchmove handler still bails out if scrollTop
+    // moves above 0 (i.e. the user is actually scrolling), so a stricter
+    // touchstart guard just made PTR feel unresponsive after settling.
+    if(c.scrollTop!==0||ptrRefreshing)return;
     sy=e.touches[0].clientY;sx2=e.touches[0].clientX;
     ptrPulling=true;triggered=false;
     const col=memberColor();setCol(col);
@@ -1660,68 +1669,64 @@ function unpinNotice(id){state.notices=(state.notices||[]).filter(n=>n.id!==id);
 function buildPollCompose(){const opts=pollOpts.map((o,i)=>`<div class="poll-opt-row"><input class="poll-opt-input" placeholder="Option ${i+1}" value="${esc(o)}" oninput="pollOpts[${i}]=this.value">${pollOpts.length>2?`<button class="poll-opt-rm" onclick="pollOpts.splice(${i},1);renderContent()">×</button>`:''}</div>`).join('');return`<div class="poll-compose" style="margin:8px 12px 0"><input class="poll-q-input" id="poll-q" placeholder="Ask the family something…" value="${esc(pollQ)}" oninput="pollQ=this.value">${opts}<div class="poll-actions">${pollOpts.length<4?`<button class="poll-add-opt" onclick="pollOpts.push('');renderContent()">+ Option</button>`:''}<button class="poll-submit" style="background:${TABS[2].accent}" onclick="postPoll()">Post Poll</button><button class="poll-cancel" onclick="showPollCompose=false;pollOpts=['',''];pollQ='';renderContent()">Cancel</button></div></div>`;}
 function postPoll(){const q=(pollQ||'').trim(),opts=pollOpts.filter(o=>o.trim());if(!q||opts.length<2)return;const poll={id:genId(),q,opts:opts.map(o=>({text:o,votes:{}})),author:member,ts:Date.now(),type:'poll'};state.notes=[poll,...state.notes];showPollCompose=false;pollOpts=['',''];pollQ='';renderContent();save();queueNotif('msg',member,q);}
 function votePoll(nid,oi){state.notes=state.notes.map(n=>{if(n.id!==nid||n.type!=='poll')return n;const opts=n.opts.map(o=>{const v={...(o.votes||{})};delete v[member];return{...o,votes:v};}).map((o,i)=>i===oi?{...o,votes:{...(o.votes||{}),[member]:true}}:o);return{...n,opts};});haptic(10);renderContent();save();}
-function renderPollBubble(n,auth,isMe){const total=n.opts.reduce((s,o)=>s+Object.keys(o.votes||{}).length,0);const myV=n.opts.findIndex(o=>(o.votes||{})[member]);const opts=n.opts.map((o,i)=>{const cnt=Object.keys(o.votes||{}).length,pct=total?Math.round(cnt/total*100):0,voted=myV===i;return`<div class="poll-option${voted?' voted':''}" style="color:${voted?auth.color:'var(--sub)'}" onclick="votePoll('${n.id}',${i})"><div class="poll-bar" style="width:${pct}%;background:${auth.color}"></div><div class="poll-inner"><span>${esc(o.text)}${voted?' ✓':''}</span><span class="poll-pct">${total?pct+'%':''}</span></div></div>`;}).join('');return`<div class="nwrap ${isMe?'mine':'theirs'}" data-noteid="${n.id}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div><div class="nbubble ${isMe?'mine':'theirs'}" style="min-width:200px;background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}"><div class="poll-question">${n.pinned?`<span style="color:#f59e0b;font-size:10px;margin-right:6px;display:inline-flex;align-items:center;gap:3px;vertical-align:middle">${iconSvg('pin',10)}PINNED</span>`:''}${esc(n.q)}</div>${opts}<div class="poll-voters">${total} vote${total!==1?'s':''}</div></div><div style="display:flex;gap:10px;${isMe?'flex-direction:row-reverse':''}"><button class="ndel" onclick="togglePinPoll('${n.id}')">${n.pinned?'Unpin':'Pin'}</button>${isMe?`<button class="ndel" onclick="delNote('${n.id}')">Delete poll</button>`:''}</div></div>`;}
+function renderPollBubble(n,auth,isMe){const total=n.opts.reduce((s,o)=>s+Object.keys(o.votes||{}).length,0);const myV=n.opts.findIndex(o=>(o.votes||{})[member]);const opts=n.opts.map((o,i)=>{const cnt=Object.keys(o.votes||{}).length,pct=total?Math.round(cnt/total*100):0,voted=myV===i;return`<div class="poll-option${voted?' voted':''}" style="color:${voted?auth.color:'var(--sub)'}" onclick="votePoll('${n.id}',${i})"><div class="poll-bar" style="width:${pct}%;background:${auth.color}"></div><div class="poll-inner"><span>${esc(o.text)}${voted?' ✓':''}</span><span class="poll-pct">${total?pct+'%':''}</span></div></div>`;}).join('');return`<div class="nwrap ${isMe?'mine':'theirs'}" data-noteid="${n.id}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div><div class="nbubble ${isMe?'mine':'theirs'}" style="min-width:200px;background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}"><div class="poll-question">${n.pinned?`<span style="color:#f59e0b;font-size:10px;margin-right:6px;display:inline-flex;align-items:center;gap:3px;vertical-align:middle">${iconSvg('pin',10)}PINNED</span>`:''}${esc(n.q)}</div>${opts}<div class="poll-voters">${total} vote${total!==1?'s':''}</div></div></div>`;}
 function togglePinPoll(nid){state.notes=state.notes.map(n=>n.id!==nid?n:{...n,pinned:!n.pinned});haptic(8);renderContent();save();}
 function showPicker(e,nid){e.stopPropagation();document.querySelectorAll('.epicker').forEach(p=>p.remove());if(openPicker===nid){openPicker=null;return;}openPicker=nid;const rbar=document.getElementById('rb'+nid);if(!rbar)return;const p=document.createElement('div');p.className='epicker';p.innerHTML=EMOJIS.map(em=>`<button class="eopt" onclick="toggleRx('${nid}','${em}');closePicker()">${em}</button>`).join('');p.style.visibility='hidden';p.style.left='-9999px';p.style.top='-9999px';document.body.appendChild(p);const pw=p.offsetWidth,ph=p.offsetHeight;const rect=rbar.getBoundingClientRect();const isMine=!!rbar.closest('.nwrap.mine');const margin=8;let left=isMine?(rect.right-pw):rect.left;left=Math.max(margin,Math.min(left,window.innerWidth-pw-margin));let top=rect.top-ph-6;if(top<60)top=rect.bottom+6;p.style.left=left+'px';p.style.top=top+'px';p.style.visibility='';const close=()=>closePicker();const cnt=document.getElementById('content');if(cnt)cnt.addEventListener('scroll',close,{once:true,passive:true});window.addEventListener('resize',close,{once:true});setTimeout(()=>document.addEventListener('click',close,{once:true}),10);}
 function closePicker(){document.querySelectorAll('.epicker').forEach(p=>p.remove());openPicker=null;}
 function toggleRx(nid,emoji){closePicker();haptic(8);state.notes=state.notes.map(n=>{if(n.id!==nid)return n;const rx={...(n.reactions||{})},who=[...(rx[emoji]||[])];const idx=who.indexOf(member);if(idx>=0)who.splice(idx,1);else who.push(member);if(!who.length)delete rx[emoji];else rx[emoji]=who;return{...n,reactions:rx};});renderContent();save();}
 function showUndoToast(msg,onUndo){document.querySelector('.undo-toast')?.remove();const t=document.createElement('div');t.className='undo-toast';t.innerHTML=`<span class="undo-txt">${msg}</span><button class="undo-btn" onclick="this.closest('.undo-toast')._undo()">Undo</button>`;t._undo=()=>{clearTimeout(undoTimer);t.remove();onUndo();};document.body.appendChild(t);undoTimer=setTimeout(()=>t.remove(),4500);}
 function showToast(msg){document.querySelector('.undo-toast')?.remove();const t=document.createElement('div');t.className='undo-toast';t.innerHTML=`<span class="undo-txt">${esc(msg)}</span>`;document.body.appendChild(t);clearTimeout(undoTimer);undoTimer=setTimeout(()=>t.remove(),3500);}
-function showPhotoSourcePicker(targetEl,opts){
-  // Small floating menu next to the trigger — same look as the long-press
-  // action menus, so it doesn't take over the whole screen.
-  showActionMenu(targetEl||document.body,[
-    {label:'Phone Library',fn:()=>opts.onPhone&&opts.onPhone()},
-    {label:'Camera',fn:()=>opts.onCamera&&opts.onCamera()}
-  ]);
-}
 function _readFileAsDataUrl(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('read'));r.readAsDataURL(file);});}
 function _loadImage(src){return new Promise((res,rej)=>{const img=new Image();img.onload=()=>res(img);img.onerror=()=>rej(new Error('img'));img.src=src;});}
 async function _dataUrlToBlob(dataUrl){try{const r=await fetch(dataUrl);return await r.blob();}catch(e){return null;}}
-function _pickAndProcessItemPhoto(itemId,useCamera){
-  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';if(useCamera)inp.capture='environment';
-  inp.onchange=async e=>{
-    const file=e.target.files&&e.target.files[0];if(!file){inp.value='';return;}
-    const k=tabIdx===0?'shop':'todo';
-    try{
-      // FileReader is more reliable than URL.createObjectURL on iOS — fixes
-      // the "first camera shot doesn't attach" race where the Image never
-      // fired onload from a blob URL.
-      const dataUrl=await _readFileAsDataUrl(file);
-      const img=await _loadImage(dataUrl);
-      const canvas=document.createElement('canvas');
-      const MAX=320,ratio=Math.min(MAX/img.width,MAX/img.height,1);
-      canvas.width=Math.max(1,Math.round(img.width*ratio));
-      canvas.height=Math.max(1,Math.round(img.height*ratio));
-      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
-      const b64=canvas.toDataURL('image/jpeg',0.75);
-      state[k]=state[k].map(i=>i.id===itemId?{...i,photo:b64}:i);
+function _withTimeout(promise,ms,label){return Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+'-timeout')),ms))]);}
+async function _processItemPhotoFile(file,itemId){
+  if(!file||!file.size){showToast('Photo was empty — try again');return;}
+  const k=tabIdx===0?'shop':'todo';
+  let b64=null,blob=null;
+  try{
+    const dataUrl=await _withTimeout(_readFileAsDataUrl(file),8000,'read');
+    const img=await _withTimeout(_loadImage(dataUrl),8000,'img');
+    const canvas=document.createElement('canvas');
+    const MAX=320,ratio=Math.min(MAX/img.width,MAX/img.height,1);
+    canvas.width=Math.max(1,Math.round(img.width*ratio));
+    canvas.height=Math.max(1,Math.round(img.height*ratio));
+    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+    b64=canvas.toDataURL('image/jpeg',0.75);
+    blob=await new Promise(res=>canvas.toBlob(res,'image/jpeg',0.75))||await _dataUrlToBlob(b64);
+    state[k]=state[k].map(i=>i.id===itemId?{...i,photo:b64}:i);
+    renderContent();save();
+  }catch(err){
+    // Local decode failed (HEIC, broken MIME, timeout). Skip the local preview
+    // and just upload the raw file — the Cloudflare KV worker stores whatever
+    // we send, and an <img> tag will load most formats fine once it's fetched
+    // back over HTTP.
+    blob=file;
+  }
+  if(!blob){showToast('Photo upload failed — try again');return;}
+  try{
+    const ct=blob.type||'image/jpeg';
+    const res=await fetch(PUSH_RELAY+'/photo',{method:'POST',headers:{'Content-Type':ct},body:blob,signal:AbortSignal.timeout(30000)});
+    if(!res.ok)throw new Error('upload');
+    const d=await res.json();
+    if(d&&d.url){
+      state[k]=state[k].map(i=>i.id===itemId?{...i,photo:d.url}:i);
       renderContent();save();
-      let blob=await new Promise(res=>canvas.toBlob(res,'image/jpeg',0.75));
-      // Some iOS WebKit builds return null from toBlob — fall back to fetch(b64)
-      if(!blob)blob=await _dataUrlToBlob(b64);
-      if(!blob){showToast('Photo upload failed — try again');return;}
-      try{
-        const res=await fetch(PUSH_RELAY+'/photo',{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob,signal:AbortSignal.timeout(30000)});
-        if(!res.ok)throw new Error('upload');
-        const d=await res.json();
-        if(d&&d.url){
-          state[k]=state[k].map(i=>i.id===itemId&&i.photo===b64?{...i,photo:d.url}:i);
-          renderContent();save();
-        }
-      }catch(err){showToast('Photo upload failed — saved locally');}
-    }catch(err){
-      showToast('Photo failed to load — try again');
-    }finally{inp.value='';}
-  };
-  inp.click();
+    }
+  }catch(err){showToast('Photo upload failed — try again');}
 }
 function addPhoto(itemId){
-  const target=document.querySelector(`.item[data-id="${itemId}"] .photo-btn`)||document.querySelector(`.item[data-id="${itemId}"]`)||document.body;
-  showPhotoSourcePicker(target,{
-    onPhone:()=>_pickAndProcessItemPhoto(itemId,false),
-    onCamera:()=>_pickAndProcessItemPhoto(itemId,true)
-  });
+  // No in-app picker — let iOS / Android show their own combined Camera +
+  // Photo Library sheet via a plain file input.
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';
+  inp.onchange=async e=>{
+    const file=e.target.files&&e.target.files[0];
+    inp.value='';
+    if(!file)return;
+    await _processItemPhotoFile(file,itemId);
+  };
+  inp.click();
 }
 async function _uploadMsgBlob(rawBlob,isGif){let blob=rawBlob;if(!isGif){try{const url=URL.createObjectURL(rawBlob);const img=new Image();await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});const MAX=720,ratio=Math.min(MAX/img.width,MAX/img.height,1);const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*ratio));c.height=Math.max(1,Math.round(img.height*ratio));c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);const compressed=await new Promise(res=>c.toBlob(res,'image/jpeg',0.85));blob=compressed||rawBlob;}catch(err){blob=rawBlob;}}if(!blob||!blob.size){setStatus('error');showToast('Image attach failed — try again');return;}const ta=document.getElementById('ni'),tasaved=ta?ta.value:'';pendingMsgUploading=true;pendingMsgImage=URL.createObjectURL(blob);renderContent();const taAfter=document.getElementById('ni');if(taAfter&&tasaved)taAfter.value=tasaved;setStatus('saving');try{const ct=blob.type||(isGif?'image/gif':'image/jpeg');const res=await fetch(PUSH_RELAY+'/photo',{method:'POST',headers:{'Content-Type':ct},body:blob,signal:AbortSignal.timeout(30000)});if(!res.ok)throw new Error('upload');const d=await res.json();if(!d||!d.url)throw new Error('no url');pendingMsgImage=d.url;pendingMsgUploading=false;setStatus('live');const ta2=document.getElementById('ni'),tasaved2=ta2?ta2.value:'';renderContent();const ta3=document.getElementById('ni');if(ta3&&tasaved2)ta3.value=tasaved2;}catch(err){pendingMsgUploading=false;pendingMsgImage=null;setStatus('error');renderContent();showToast('Image upload failed — try again');}}
 function attachMsgImage(){if(pendingMsgUploading)return;const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=async e=>{const file=e.target.files&&e.target.files[0];if(!file){inp.value='';return;}const isGif=(file.type==='image/gif')||/\.gif$/i.test(file.name||'');try{await _uploadMsgBlob(file,isGif);}finally{inp.value='';}};inp.click();}
