@@ -4,7 +4,7 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
-  CURRENT VERSION: v7.0.11
+  CURRENT VERSION: v7.1.0
   (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
    THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
    Do NOT infer the version from the changelog below — it can lag if
@@ -40,12 +40,36 @@
                           opens action menu with [Edit][Reply][Delete]
                           (Edit/Delete only on own messages, Reply only
                           for non-poll messages).
-  - editItem(id) / editNote(id) — open the edit popup for an item or
-                          message; saves on Enter or the Save button.
+  - editItem(id) / editNote(id) / editPoll(id) — open the edit popup
+                          for an item, message, or poll; saves on Enter
+                          or the Save button. editNote uses
+                          showMsgEditPopup so you can add/replace/remove
+                          the photo as well as the text. editPoll uses
+                          showPollEditPopup and preserves existing votes
+                          for any option whose text hasn't changed.
   - showActionMenu(target,items) / showEditPopup(title,initial,onSave)
+                          / showMsgEditPopup(text,image,onSave)
+                          / showPollEditPopup(poll,onSave)
                           / showConfirmPopup(msg,onYes) — small popup
                           helpers used for hold-menus, edit dialogs
                           and the Clear-all confirm.
+  - addPhoto(itemId)    — for items: opens showPhotoSourcePicker first
+                          (Library / Phone / Camera), then routes to the
+                          chosen source. Camera/Phone go through
+                          _pickAndProcessItemPhoto which uses FileReader
+                          (more reliable on iOS than blob URLs) and a
+                          toBlob fallback so the first capture lands
+                          consistently.
+  - showPhotoSourcePicker(opts) / showPhotoLibrary(onPick) — the 3-way
+                          source chooser and the library grid. Successful
+                          uploads auto-add to state.photoLibrary (capped
+                          80, deduped by URL) so the same photo can be
+                          reused without re-uploading.
+  - blockSuggestion(i)  — the × on a typed-suggestion chip. Adds the
+                          item key to state.itemHistory.shopBlocked so
+                          it never shows up as a suggestion again.
+                          updateSuggestions also gates by count>=2 so
+                          one-off entries don't surface at all.
   - drafts {shop,todo,msg,notice} — in-memory typed text per tab.
                           captureDraftsForCurrentTab() runs at the
                           start of setTab; restoreDraftsForCurrentTab()
@@ -120,6 +144,35 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v7.1.0 - Big quality-of-life pass — hence the medium bump. (1) Pull-
+            to-refresh is now strictly top-of-scroll only and ignores
+            the bounce-back from a fast scroll, so it can't fire while
+            you're scrolling through a long list. (2) Refresh animation
+            redone: the bigger glow is gone entirely and the thin top
+            bar now flashes through every family member's colour during
+            the refresh, starting and ending on your own. (3) Item
+            photos: tapping the camera no longer just opens the camera
+            — you get a chooser with Library / Phone / Camera. The new
+            local Photo Library remembers every photo anyone has
+            uploaded (capped at 80, synced via Firebase) so the same
+            photo can be reused without re-shooting. Long-press × on a
+            library tile to remove it. (4) Camera attach is more
+            reliable on the first try: switched to FileReader instead
+            of blob URLs and added a toBlob null-fallback, both of
+            which were silent failure paths on iOS. (5) Editing a
+            message now lets you add, replace or remove the photo too,
+            not just the text. (6) Polls are editable now — long-press
+            a poll like any other message to get Edit / Delete; votes
+            are preserved for options whose text doesn't change. (7)
+            Type-ahead suggestions only appear once an item has been
+            added at least twice, and each chip has a × to permanently
+            block it from showing again (kept in itemHistory.shopBlocked,
+            synced across devices). (8) Tab swipes no longer lag on
+            back-to-back gestures: a queued-tab pointer fires the next
+            switch the moment the previous slide ends, and the slide
+            duration is shorter (320ms vs 440ms). (9) The Live↔Saving
+            status pill now holds Saving for at least 550ms so a fast
+            save no longer flashes Live→Saving→Live in one frame.
   v7.0.11 - Real fix for the "white screen on second profile change":
             selectMember fades the .login-card to opacity:0 + a
             shrunken transform before switching to the app screen,
@@ -767,8 +820,10 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .iright{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;flex-shrink:0;width:64px}
 .suggest-row{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px;border-top:0 solid var(--brd);max-height:0;overflow:hidden;transition:max-height .22s var(--ease),padding .22s var(--ease),border-top-width .22s var(--ease),opacity .18s var(--ease);opacity:0}
 .suggest-row.has-suggs{padding:7px 10px 7px;border-top-width:1px;max-height:60px;opacity:1}
-.sugg-chip{font-size:11px;font-weight:600;padding:4px 10px;border-radius:14px;border:1.5px solid var(--brd);background:transparent;cursor:pointer;flex-shrink:0;white-space:nowrap;transition:transform .12s var(--ease),background .15s}
+.sugg-chip{font-size:11px;font-weight:600;padding:4px 8px 4px 10px;border-radius:14px;border:1.5px solid var(--brd);background:transparent;cursor:pointer;flex-shrink:0;white-space:nowrap;transition:transform .12s var(--ease),background .15s;display:inline-flex;align-items:center;gap:6px}
 .sugg-chip:active{transform:scale(.9);background:var(--surf2)}
+.sugg-chip-x{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:13px;font-weight:800;color:inherit;opacity:.55;line-height:1;transition:opacity .12s,background .12s,color .12s}
+.sugg-chip-x:active{opacity:1;color:#ef4444;background:rgba(239,68,68,.14)}
 .iname{font-size:10px;font-weight:700;flex-shrink:0}
 .iurg{display:inline-flex;align-items:center;gap:2px;font-size:10px;font-weight:600;cursor:pointer;flex-shrink:0;transition:opacity .14s}
 .iurg:active{opacity:.6}
@@ -930,6 +985,11 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .app-popup-btn:active{transform:scale(.96);opacity:.9}
 .app-popup-dismiss{width:100%;padding:9px;margin-top:6px;background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer}
 .iqty{font-size:10px;font-weight:700;color:var(--sub);background:var(--surf2);border:1px solid var(--brd);border-radius:7px;padding:1px 6px;flex-shrink:0;font-variant-numeric:tabular-nums}
+.lib-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;max-height:54vh;overflow-y:auto;padding:2px;margin-bottom:4px}
+.lib-photo-wrap{position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;border:1px solid var(--brd);background:var(--surf2)}
+.lib-photo{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
+.lib-photo-rm{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.62);color:#fff;border:none;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
+.lib-photo-rm:active{background:#ef4444}
 .qty-step{display:inline-flex;align-items:center;flex-shrink:0;line-height:1;gap:0;margin-left:2px}
 .qty-btn{width:22px;height:22px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:13px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1;border-radius:5px;transition:background .12s,color .12s,transform .1s}
 .qty-btn:active{background:var(--surf2);color:var(--text);transform:scale(.85)}
@@ -979,7 +1039,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.0.11';
+const VER='v7.1.0';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#3b82f6'},{name:'Jiv',initials:'J',color:'#f97316'},{name:'Rajan(Midget)',initials:'R',color:'#ef4444'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -989,7 +1049,7 @@ const SORTS=[{key:'recency-desc',label:'Newest'},{key:'recency-asc',label:'Oldes
 const EMOJIS=['👍','❤️','😂','😮','😢','🔥','🎉','🙏'];
 const CATS=[{id:'produce',label:'Produce'},{id:'dairy',label:'Dairy'},{id:'bakery',label:'Bakery'},{id:'cereal',label:'Cereal'},{id:'snacks',label:'Snacks'},{id:'meat',label:'Meat'},{id:'tins',label:'Tins'},{id:'drinks',label:'Drinks'},{id:'house',label:'Household'},{id:'other',label:'Other'}];
 const CAT_HINTS={cereal:['cereal','cornflakes','corn flakes','weetabix','cheerios','frosties','rice krispies','rice krispie','shreddies','bran flakes','special k','coco pops','cocopops','crunchy nut','alpen','fruit n fibre','ready brek','readybrek','porridge oats','weetos','lucky charms','nesquik','sugar puffs','krave','all-bran','allbran','quaker','quaker oats','kelloggs','kellogg','oats','granola','muesli','porridge','breakfast cereal','breakfast bar','cereal bar','oatmeal','grape nuts','rice krispie treat','overnight oats','oat porridge','oatibix','shredded wheat','optivita','oat cluster','cluster','cinnamon toast crunch','frosted flakes','honey nut'],snacks:['snack','snacks','treat','treats','sweets','candy','gum','chewing gum','chocolate','cocoa','marshmallow','crisps','chips','popcorn','pretzels','tortilla chip','tortilla chips','nacho','nachos','corn chip','cheese puff','fudge','toffee','caramel','butterscotch','liquorice','licorice','candy floss','cotton candy','jelly bean','jelly beans','dark chocolate','milk chocolate','white chocolate','chocolate bar','chocolate buttons','chocolate orange','aero','curly wurly','double decker','crunch bar','toblerone','reeses','butterfinger','hershey','hersheys','choc ice','cornetto','cookie dough','haribo','maltesers','smarties','m&ms','m and m','skittles','starburst','refreshers','drumstick lolly','milky way','mars bar','mars chocolate','bounty bar','twix','snickers','kitkat','kit kat','wispa','cadbury flake','cadbury crunchie','dairy milk','cadbury','galaxy chocolate','lindt','ferrero','ferrero rocher','after eight','quality street','celebrations','cadbury heroes','cadbury roses','milkybar','milky bar','chewits','fruit pastilles','jelly babies','percy pig','midget gems','wine gums','foam bananas','cola bottles','gummy bear','gummy bears','polo mint','polo mints','extra gum','wrigley','wrigleys','hubba bubba','tic tac','tic tacs','walkers crisps','walkers','doritos','pringles','monster munch','mini cheddars','hula hoops','wotsits','squares crisps','quavers','frazzles','space raiders','oreo','oreos','jaffa cake','jaffa cakes','penguin biscuit','club biscuit','breakaway','rocky road','mince pie','mince pies','party rings','viennese whirl','viennese','battenberg','madeleine','macaron','macaroon','share bag','multipack','grab bag','crisp packet','snack pack','sour patch','sour patch kids','nerds','airheads','warheads','sherbet','sherbet lemon','sherbet straw','love hearts','dolly mixture','liquorice allsorts','allsorts','wham bar','fizzy cola','fizzy bottles','fizzy peach'],produce:['apple','apples','banana','bananas','orange','oranges','carrot','carrots','tomato','tomatoes','lettuce','spinach','potato','potatoes','onion','onions','garlic','lemon','lemons','lime','limes','pepper','peppers','mushroom','mushrooms','broccoli','cucumber','cucumbers','avocado','avocados','fruit','fruits','veg','veggies','vegetable','vegetables','aubergine','eggplant','courgette','courgettes','zucchini','leek','leeks','kale','rocket','arugula','romaine','coriander','cilantro','basil','mint','parsley','dill','ginger','chilli','chillies','chili','jalapeno','spring onion','scallion','shallot','beetroot','beets','cabbage','cauliflower','sprouts','asparagus','peas','sweetcorn','corn','parsnip','swede','turnip','radish','sweet potato','sweet potatoes','plantain','okra','butternut','squash','pumpkin','celery','fennel','artichoke','pear','pears','peach','peaches','plum','plums','grape','grapes','berry','berries','strawberry','strawberries','blueberry','blueberries','raspberry','raspberries','blackberry','blackberries','kiwi','mango','mangoes','pineapple','melon','watermelon','cantaloupe','pomegranate','papaya','fig','figs','date','dates','cherry','cherries','nectarine','apricot','apricots','salad','herbs','spinach','dragon fruit','passion fruit','lychee','guava','okra','pak choi','bok choy','taro','yam','jackfruit','breadfruit','durian','persimmon','soursop','starfruit','dragonfruit','gourd','bitter gourd','snake gourd','ridge gourd','kohlrabi','samphire','watercress','endive','chicory','radicchio','iceberg','little gem','butterhead','horseradish','salsify','jerusalem artichoke','globe artichoke','bell pepper','mooli','daikon','tindora','curry leaves','tamarind','galangal','kaffir lime','lemongrass','collard greens','mustard greens','swiss chard','rhubarb','quince','grapefruit','clementine','satsuma','tangerine','custard apple','ackee','elderberry','gooseberry','currant','redcurrant','blackcurrant','tomatillo','sugar snap','mangetout','sprouting broccoli','tenderstem','baby corn','garlic clove','ginger root'],dairy:['milk','cheese','yogurt','yoghurt','butter','cream','egg','eggs','ghee','paneer','lassi','buttermilk','kefir','curd','dahi','cheddar','brie','feta','halloumi','mozzarella','parmesan','ricotta','mascarpone','goat cheese','cream cheese','philadelphia','sour cream','double cream','single cream','whipping cream','clotted cream','condensed milk','evaporated milk','almond milk','oat milk','soy milk','soya milk','coconut milk','skyr','quark','margarine','ice cream','custard','creme fraiche','crème fraîche','laban','labneh','cottage cheese','string cheese','babybel','dairy','gouda','edam','manchego','gruyere','asiago','gorgonzola','stilton','roquefort','camembert','wensleydale','red leicester','double gloucester','provolone','emmental','swiss cheese','bocconcini','burrata','queso','greek yogurt','natural yogurt','probiotic yogurt','tzatziki','raita','heavy cream','whipped cream','squirty cream','uht milk','semi skimmed','skimmed milk','full fat milk','whole milk','lactose free','laughing cow','dairylea','cathedral city','pilgrims choice','seriously cheese','lurpak','anchor butter','kerrygold','country life butter','flora','vitalite','utterly butterly','alpro','oatly','koko milk','califia','arla','muller','müller','yeo valley','activia','danone','fage','total greek','onken','weight watchers yogurt','ski yogurt','muller light','müllerlight','muller corner'],bakery:['bread','breadroll','roll','rolls','bagel','bagels','croissant','croissants','cake','cakes','biscuit','biscuits','flour','yeast','bun','buns','baguette','naan','chapati','chapatti','roti','paratha','pita','pitta','tortilla','tortillas','wrap','wraps','pancake','pancakes','muffin','muffins','donut','donuts','doughnut','doughnuts','scone','scones','cookie','cookies','brownie','brownies','pastry','pastries','pie','pies','tart','tarts','cracker','crackers','rye','wholemeal','wholewheat','sourdough','ciabatta','focaccia','breadsticks','cornbread','flatbread','crumpet','crumpets','toast','dough','pumpernickel','rye bread','brioche','danish pastry','danish','eclair','profiterole','baklava','gingerbread','shortbread','fruitcake','swiss roll','victoria sponge','cinnamon roll','cinnamon bun','sticky bun','hot cross bun','english muffin','tortilla wrap','garlic bread','breadcrumb','seeded loaf','panettone','stollen','soda bread','digestive','rich tea','custard cream','jammie dodger','bourbon biscuit','ginger nut','hobnob','flapjack','mcvities','mcvitie','chocolate digestive','malted milk','nice biscuit','pink wafer','lemon puff','maryland','foxs','fox biscuits','bakewell','bakewell tart','mr kipling','fondant fancy','angel slice','lemon slice','jam tart','jam tarts','iced finger','iced bun','belgian bun','chelsea bun','rusks','farleys','garibaldi'],meat:['chicken','beef','lamb','pork','fish','salmon','tuna','mince','steak','sausage','sausages','turkey','duck','prawn','prawns','shrimp','cod','mackerel','sardine','sardines','anchovy','anchovies','bacon','ham','gammon','ribs','kebab','chop','chops','fillet','breast','thigh','thighs','drumstick','drumsticks','wing','wings','liver','kidney','brisket','pancetta','chorizo','salami','pepperoni','hotdog','hot dog','meatball','meatballs','venison','rabbit','goat meat','mutton','tikka','seekh','keema','wagyu','ribeye','sirloin','frankfurter','black pudding','haggis','crab','lobster','scallop','scallops','squid','octopus','calamari','oxtail','tripe','gizzard','marrow bone','bone marrow','mortadella','prosciutto','pastrami','corned beef','biltong','jerky','capicola','speck','andouille','blood sausage','bratwurst','knockwurst','smoked ham','smoked salmon','smoked mackerel','kipper','herring','trout','halibut','sea bass','red snapper','perch','eel','mussel','mussels','clam','clams','oyster','oysters','crayfish','langoustine','tilapia','barramundi','swordfish','grouper','pollock','flounder','sole','plaice','whiting','haddock','smoked haddock','tuna steak','quail','pheasant','partridge','venison steak','birds eye','youngs','young fish','fishmongers','john west','princes tuna','princes meat','mattessons','richmond sausages','walls sausages','finnebrogue','aberdeen angus','quorn','linda mccartney','beyond meat','impossible meat'],drinks:['water','juice','coke','pepsi','coffee','tea','beer','wine','drink','drinks','soda','lemonade','sprite','fanta','irn bru','ribena','squash','cordial','milkshake','smoothie','kombucha','redbull','red bull','monster','gatorade','lucozade','vodka','gin','whiskey','whisky','rum','brandy','champagne','prosecco','lager','ale','cider','chai','espresso','latte','cappuccino','americano','decaf','herbal tea','green tea','black tea','mineral water','sparkling water','still water','tonic','7up','7-up','dr pepper','iced tea','iced coffee','hot chocolate','horlicks','ovaltine','rooh afza','tang','nimbu pani','cocoa drink','matcha','masala chai','frappe','frappuccino','slush','slushie','falooda','jaljeera','protein shake','energy drink','sports drink','vitamin water','coconut water','aloe vera juice','pomegranate juice','cranberry juice','grapefruit juice','prune juice','tomato juice','vegetable juice','green smoothie','horchata','iced latte','flat white','macchiato','mocha','mochaccino','irish coffee','turkish coffee','greek coffee','arabic coffee','milkshake drink','thickshake','bubble tea','boba','rooibos','chamomile','peppermint tea','jasmine tea','earl grey','breakfast tea','assam','darjeeling','oolong','barley tea','genmaicha','sencha','matcha latte','golden milk','turmeric latte','beetroot juice','san pellegrino','perrier','evian','volvic','highland spring','buxton','schweppes','diet coke','coke zero','pepsi max','diet pepsi','robinsons','vimto','oasis drink','capri sun','fruit shoot','innocent','innocent smoothie','tropicana','copella','naked juice','ocean spray','pg tips','yorkshire tea','tetley','twinings','typhoo','clipper tea','dilmah','nescafe','gold blend','kenco','starbucks coffee','costa coffee','douwe egberts','lavazza','illy','stella artois','stella beer','heineken','carlsberg','kronenbourg','peroni','corona beer','budweiser','becks','fosters beer','strongbow','bulmers','kopparberg','kingfisher beer','cobra beer','smirnoff','gordons','bombay sapphire','captain morgan','baileys','jack daniels','jameson','jacobs creek','blossom hill','red wine','white wine','rose wine','sparkling wine'],house:['soap','shampoo','washing','bleach','toilet','tissue','tissues','sponge','sponges','cleaning','bin','bag','bags','detergent','fabric softener','conditioner','deodorant','toothpaste','toothbrush','mouthwash','floss','razor','razors','shaving','body wash','lotion','moisturiser','moisturizer','sunscreen','candle','candles','matches','lighter','battery','batteries','lightbulb','bulb','bulbs','towel','towels','sheets','foil','clingfilm','cling film','ziplock','freezer bag','sandwich bag','bin bag','bin liner','glove','gloves','dishwasher','fairy','persil','ariel','cif','dettol','lysol','sanitiser','sanitizer','wipes','nappy','nappies','diaper','tampon','tampons','sanitary','hairspray','hair gel','plaster','plasters','bandage','paracetamol','ibuprofen','aspirin','vitamin','vitamins','medicine','kitchen roll','paper towel','toilet paper','toilet roll','loo roll','dish soap','washing up','laundry','febreze','glade','windex','dustbin','rubbish','garbage','sponge','scourer','dishcloth','tea towel','mop','broom','duster','polish','wax','airwick','poo bag','litter','cat litter','dog food','dog treats','cat food','pet food','flea','aluminium foil','soap dish','drain unblocker','drain cleaner','toilet brush','toilet cleaner','deodorizer','deodoriser','air freshener','plugin','reed diffuser','potpourri','fairy lights','doormat','floor mat','clothes hanger','clothes peg','clothes pegs','clothesline','washing line','ironing board','steam iron','hairbrush','comb','nail file','nail scissors','kitchen scissors','tweezers','nail clipper','cotton wool','cotton ball','cotton buds','q-tips','q tips','qtips','ear plug','earplugs','eye mask','sleep mask','antiseptic','antibacterial','calpol','panadol','nurofen','savlon','sudocrem','vaseline','e45','aveeno','chapstick','lip balm','lipbalm','sunblock','mosquito spray','mosquito repellent','bug spray','insect spray','ant trap','mouse trap','rat trap','baking paper','parchment paper','greaseproof','clingwrap','cling wrap','sandwich box','tupperware','lunch box','water bottle','flask','thermos','reusable bag','tote bag','shopping bag','plastic bag','rubbish bag','garbage bag','black bag','recycling bag','recycle bin','compost bin','bucket','dustpan','feather duster','furniture polish','wood polish','silver polish','brass polish','shoe polish','shoelace','laundry basket','washing basket','laundry detergent','laundry pod','washing pod','washing capsule','dishwasher tablet','dishwasher salt','dishwasher rinse','rinse aid','descaler','limescale','rubber gloves','disposable gloves','latex gloves','marigolds','apron','dish brush','dish scrubber','steel wool','sos pad','dish cloth','j cloth','jcloth','floor cleaner','glass cleaner','window cleaner','wood cleaner','bathroom cleaner','tile cleaner','grout cleaner','oven cleaner','hob cleaner','spray bottle','ecover','surf detergent','bold detergent','daz','comfort fabric','lenor','vanish','ace bleach','cillit bang','mr muscle','flash cleaner','flash spray','viakal','pledge','mr sheen','brillo','jif','parazone','harpic','domestos','toilet duck','bloo','frosch','head and shoulders','herbal essences','pantene','garnier','loreal','dove soap','nivea','simple skincare','cetaphil','johnsons','johnson baby','gillette','venus razor','lynx','axe deodorant','sure deodorant','right guard','mitchum','old spice','oral-b','oral b','colgate','sensodyne','aquafresh','listerine','corsodyl','tepe','tampax','always pad','bodyform','bonjela','anbesol','voltarol','whiskas','felix cat','sheba cat','iams','royal canin','pedigree dog','bakers dog','butchers dog','harringtons','dreamies','schmackos'],tins:['tin','can','pasta','rice','sauce','soup','beans','noodles','ramen','spaghetti','penne','fusilli','lasagne','lasagna','gnocchi','couscous','quinoa','basmati','jasmine rice','brown rice','white rice','oil','olive oil','vegetable oil','sunflower oil','vinegar','salt','sugar','spice','spices','cumin','turmeric','paprika','oregano','thyme','rosemary','garam masala','cinnamon','cardamom','cloves','star anise','bay leaf','curry powder','ketchup','mayo','mayonnaise','mustard','soy sauce','hot sauce','sriracha','jam','marmalade','honey','peanut butter','almond butter','nutella','baking powder','baking soda','lentil','lentils','dal','dhal','chickpea','chickpeas','kidney beans','baked beans','black beans','olive','olives','pickle','pickles','gherkins','pesto','curry paste','passata','tomato paste','tomato puree','stock','gravy','seasoning','tabasco','worcestershire','dressing','salsa','hummus','tahini','peanut','peanuts','almond','almonds','walnut','walnuts','cashew','cashews','pistachio','pistachios','raisin','raisins','sultana','prune','dried fruit','seeds','oil spray','cornflour','cornstarch','breadcrumbs','jelly','syrup','maple syrup','condiment','spread','orzo','vermicelli','glass noodles','udon','soba','rice noodles','idli','dosa','poppadom','papad','curry sauce','enchilada sauce','taco shell','taco seasoning','taco kit','malt vinegar','balsamic vinegar','rice vinegar','white vinegar','cider vinegar','apple cider vinegar','oyster sauce','fish sauce','hoisin','plum sauce','sweet chilli','sweet chilli sauce','sweet and sour','tartare','tartar sauce','mint sauce','brown sauce','hp sauce','redcurrant jelly','cranberry sauce','mincemeat','suet','gelatine','gelatin','agar','arrowroot','tapioca','semolina','polenta','bran','bulgur','freekeh','millet','buckwheat','rye flakes','pearl barley','moong','moong dal','masoor','masoor dal','chana dal','urad dal','toor dal','tuvar','arhar','mung bean','broad beans','butter beans','cannellini','borlotti','navy beans','pinto beans','black eyed','black eyed peas','aduki','adzuki','soy beans','soya beans','split peas','marrowfat peas','mushy peas','tinned tomatoes','chopped tomatoes','plum tomatoes','sundried tomatoes','sun dried tomatoes','passata','tomato puree','tomato paste','barbecue sauce','bbq sauce','steak sauce','wing sauce','chimichurri','harissa','sambal','gochujang','miso','tamari','aminos','liquid aminos','coconut aminos','rice wine','mirin','marsala','cooking sherry','vermouth','vanilla extract','vanilla pod','almond extract','rosewater','rose water','orange flower water','food colouring','food coloring','sprinkles','hundreds and thousands','icing sugar','caster sugar','demerara','muscovado','brown sugar','golden syrup','treacle','molasses','agave','stevia','sweetener','aspartame','barilla','dolmio','knorr','batchelors','heinz','branston','hellmanns','hellmann','baxters','heinz beans','heinz soup','maggi','schwartz','oxo','oxo cube','bisto','pataks','sharwoods','sharwood','geetas','kewpie','lee kum kee','kikkoman','blue dragon','amoy','marigold stock']};
-let state={shop:[],todo:[],notes:[],notices:[],itemHistory:{shop:{},todo:{}},shopMode:null};
+let state={shop:[],todo:[],notes:[],notices:[],itemHistory:{shop:{},todo:{},shopBlocked:[]},shopMode:null,photoLibrary:[]};
 let replyingTo=null;
 const SHOP_MODE_TTL=90*60*1000;
 let _suggestList=[];
@@ -1015,21 +1075,39 @@ function esc(s){const d=document.createElement('div');d.textContent=s;return d.i
 function haptic(p){try{navigator.vibrate(p||8);}catch(e){}}
 function suggestCat(text){const t=text.toLowerCase();for(const[cat,words]of Object.entries(CAT_HINTS)){if(words.some(w=>t.includes(w)))return cat;}return'other';}
 function _histK(text){return(text||'').toLowerCase().replace(/[.#$\[\]\/]/g,'_');}
-function updateSuggestions(){const inp=document.getElementById('mi'),row=document.getElementById('suggest-row');if(!inp||!row)return;if(tabIdx!==0){_suggestList=[];row.classList.remove('has-suggs');row.innerHTML='';return;}const q=_histK((inp.value||'').trim());if(q.length<2){_suggestList=[];row.classList.remove('has-suggs');row.innerHTML='';return;}const hist=(state.itemHistory&&state.itemHistory.shop)||{};_suggestList=Object.entries(hist).filter(([k,_])=>k.includes(q)&&k!==q).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>k);if(!_suggestList.length){row.classList.remove('has-suggs');row.innerHTML='';return;}const acc=TABS[tabIdx].accent;const newHTML=_suggestList.map((k,i)=>`<button class="sugg-chip" style="border-color:${acc}55;color:${acc}" onclick="pickSuggestion(${i})">${esc(k)}</button>`).join('');if(row.innerHTML!==newHTML)row.innerHTML=newHTML;row.classList.add('has-suggs');}
+function updateSuggestions(){const inp=document.getElementById('mi'),row=document.getElementById('suggest-row');if(!inp||!row)return;if(tabIdx!==0){_suggestList=[];row.classList.remove('has-suggs');row.innerHTML='';return;}const q=_histK((inp.value||'').trim());if(q.length<2){_suggestList=[];row.classList.remove('has-suggs');row.innerHTML='';return;}const hist=(state.itemHistory&&state.itemHistory.shop)||{};const blocked=new Set((state.itemHistory&&state.itemHistory.shopBlocked)||[]);_suggestList=Object.entries(hist).filter(([k,c])=>k.includes(q)&&k!==q&&(typeof c==='number'?c>=2:false)&&!blocked.has(k)).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>k);if(!_suggestList.length){row.classList.remove('has-suggs');row.innerHTML='';return;}const acc=TABS[tabIdx].accent;const newHTML=_suggestList.map((k,i)=>`<button class="sugg-chip" style="border-color:${acc}55;color:${acc}" onclick="pickSuggestion(${i})"><span>${esc(k)}</span><span class="sugg-chip-x" onclick="event.stopPropagation();blockSuggestion(${i})" title="Don't suggest again">×</span></button>`).join('');if(row.innerHTML!==newHTML)row.innerHTML=newHTML;row.classList.add('has-suggs');}
 function pickSuggestion(i){const text=_suggestList[i];if(text==null)return;const inp=document.getElementById('mi');if(!inp)return;inp.value=text;inp.focus();const row=document.getElementById('suggest-row');if(row){row.classList.remove('has-suggs');row.innerHTML='';}haptic(6);}
+function blockSuggestion(i){const k=_suggestList[i];if(!k)return;state.itemHistory=state.itemHistory||{shop:{},todo:{}};const cur=state.itemHistory.shopBlocked||[];if(!cur.includes(k))state.itemHistory.shopBlocked=[...cur,k];haptic([10,30,10]);_suggestList.splice(i,1);updateSuggestions();save();}
 function cacheState(){try{localStorage.setItem('cfh-cache',JSON.stringify({state,ts:Date.now()}));}catch(e){}}
 function loadCache(){try{const c=JSON.parse(localStorage.getItem('cfh-cache')||'null');if(c&&c.state)return c;}catch(e){}return null;}
 function setOffline(v){document.body.classList.toggle('offline',v);}
-async function fbRead(){const r=await fetch(FB,{signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error(r.status);const d=await r.json();const ih=(d&&d.itemHistory)||{};return{shop:toArr(d&&d.shop),todo:toArr(d&&d.todo),notes:toArr(d&&d.notes),notices:toArr(d&&d.notices),itemHistory:{shop:(ih&&ih.shop)||{},todo:(ih&&ih.todo)||{}},shopMode:(d&&d.shopMode)||null,updatedAt:(d&&d.updatedAt)||0};}
+async function fbRead(){const r=await fetch(FB,{signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error(r.status);const d=await r.json();const ih=(d&&d.itemHistory)||{};return{shop:toArr(d&&d.shop),todo:toArr(d&&d.todo),notes:toArr(d&&d.notes),notices:toArr(d&&d.notices),itemHistory:{shop:(ih&&ih.shop)||{},todo:(ih&&ih.todo)||{},shopBlocked:toArr(ih&&ih.shopBlocked)},shopMode:(d&&d.shopMode)||null,photoLibrary:toArr(d&&d.photoLibrary),updatedAt:(d&&d.updatedAt)||0};}
 async function fbReadUpdatedAt(){const r=await fetch(FB.replace(/\.json$/,'/updatedAt.json'),{signal:AbortSignal.timeout(5000)});if(!r.ok)throw new Error(r.status);const v=await r.json();return typeof v==='number'?v:0;}
 function _scrubHist(h){if(!h||typeof h!=='object')return h;const out={};for(const[k,v]of Object.entries(h)){const sk=_histK(k);if(!sk)continue;out[sk]=(out[sk]||0)+(typeof v==='number'?v:0);}return out;}
-async function fbWrite(data){const ih=data&&data.itemHistory;const safeIh=ih?{shop:_scrubHist(ih.shop),todo:_scrubHist(ih.todo)}:ih;const p={...data,itemHistory:safeIh,updatedAt:Date.now()};const r=await fetch(FB,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});if(!r.ok)throw new Error(r.status);return p.updatedAt;}
-function setStatus(s){const dot=document.getElementById('sdot'),txt=document.getElementById('stxt');if(!dot)return;const c={live:'#22c55e',saving:'#f59e0b',error:'#ef4444',offline:'#94a3b8'};dot.style.background=c[s]||c.live;txt.textContent={live:'Live',saving:'Saving',error:'Error',offline:'Offline'}[s]||'Live';}
+async function fbWrite(data){const ih=data&&data.itemHistory;const safeIh=ih?{shop:_scrubHist(ih.shop),todo:_scrubHist(ih.todo),shopBlocked:Array.isArray(ih.shopBlocked)?ih.shopBlocked.filter(x=>typeof x==='string'&&x):[]}:ih;const p={...data,itemHistory:safeIh,updatedAt:Date.now()};const r=await fetch(FB,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});if(!r.ok)throw new Error(r.status);return p.updatedAt;}
+let _statusSavingTs=0,_statusPendingTimer=null;
+function _applyStatus(s){const dot=document.getElementById('sdot'),txt=document.getElementById('stxt');if(!dot)return;const c={live:'#22c55e',saving:'#f59e0b',error:'#ef4444',offline:'#94a3b8'};dot.style.background=c[s]||c.live;txt.textContent={live:'Live',saving:'Saving',error:'Error',offline:'Offline'}[s]||'Live';}
+function setStatus(s){
+  // Hold "Saving" for at least 550ms so a fast save doesn't flash Live→Saving→Live in one frame
+  if(s==='saving'){_statusSavingTs=Date.now();if(_statusPendingTimer){clearTimeout(_statusPendingTimer);_statusPendingTimer=null;}_applyStatus('saving');return;}
+  if(_statusSavingTs){
+    const elapsed=Date.now()-_statusSavingTs,minHold=550;
+    if(elapsed<minHold){
+      if(_statusPendingTimer)clearTimeout(_statusPendingTimer);
+      _statusPendingTimer=setTimeout(()=>{_statusPendingTimer=null;_statusSavingTs=0;_applyStatus(s);},minHold-elapsed);
+      return;
+    }
+    _statusSavingTs=0;
+  }
+  _applyStatus(s);
+}
 function mergeLists(local,remote){const m=new Map();for(const it of(remote||[]))if(it&&it.id)m.set(it.id,it);for(const it of(local||[]))if(it&&it.id)m.set(it.id,it);return[...m.values()];}
 function mergeHist(a,b){const out={};const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]);for(const k of keys)out[k]=Math.max((a&&a[k])||0,(b&&b[k])||0);return out;}
 function pickShopMode(local,remote){if(!local&&!remote)return null;if(!local)return remote;if(!remote)return local;return(local.startedAt>=remote.startedAt)?local:remote;}
-async function save(){if(isSaving)return;isSaving=true;if(state.shopMode&&Date.now()-state.shopMode.startedAt>SHOP_MODE_TTL)state.shopMode=null;setStatus('saving');cacheState();let merged=false;try{try{const remote=await fbRead();if(remote.updatedAt>lastTs){state={shop:mergeLists(state.shop,remote.shop),todo:mergeLists(state.todo,remote.todo),notes:mergeLists(state.notes,remote.notes),notices:mergeLists(state.notices,remote.notices),itemHistory:{shop:mergeHist(state.itemHistory&&state.itemHistory.shop,remote.itemHistory&&remote.itemHistory.shop),todo:mergeHist(state.itemHistory&&state.itemHistory.todo,remote.itemHistory&&remote.itemHistory.todo)},shopMode:pickShopMode(state.shopMode,remote.shopMode)};merged=true;}}catch(e){}lastTs=await fbWrite(state);setStatus('live');setOffline(false);if(merged){renderContent();renderTabs();}}catch(e){setStatus(navigator.onLine?'error':'offline');setOffline(!navigator.onLine);}isSaving=false;}
-function startPoll(){if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(async()=>{if(isSaving)return;try{const u=await fbReadUpdatedAt();if(u>lastTs){const d=await fbRead();if(d.updatedAt>lastTs){lastTs=d.updatedAt;state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{}},shopMode:d.shopMode||null};cacheState();renderContent();renderTabs();}}setOffline(false);}catch(e){setOffline(!navigator.onLine);}},5000);}
+function mergePhotoLib(a,b){const m=new Map();for(const p of(a||[]))if(p&&p.url)m.set(p.url,p);for(const p of(b||[]))if(p&&p.url){const cur=m.get(p.url);if(!cur||(p.ts||0)>(cur.ts||0))m.set(p.url,p);}return[...m.values()].sort((x,y)=>(y.ts||0)-(x.ts||0)).slice(0,80);}
+function mergeBlocked(a,b){return Array.from(new Set([...(a||[]),...(b||[])]));}
+async function save(){if(isSaving)return;isSaving=true;if(state.shopMode&&Date.now()-state.shopMode.startedAt>SHOP_MODE_TTL)state.shopMode=null;setStatus('saving');cacheState();let merged=false;try{try{const remote=await fbRead();if(remote.updatedAt>lastTs){state={shop:mergeLists(state.shop,remote.shop),todo:mergeLists(state.todo,remote.todo),notes:mergeLists(state.notes,remote.notes),notices:mergeLists(state.notices,remote.notices),itemHistory:{shop:mergeHist(state.itemHistory&&state.itemHistory.shop,remote.itemHistory&&remote.itemHistory.shop),todo:mergeHist(state.itemHistory&&state.itemHistory.todo,remote.itemHistory&&remote.itemHistory.todo),shopBlocked:mergeBlocked(state.itemHistory&&state.itemHistory.shopBlocked,remote.itemHistory&&remote.itemHistory.shopBlocked)},shopMode:pickShopMode(state.shopMode,remote.shopMode),photoLibrary:mergePhotoLib(state.photoLibrary,remote.photoLibrary)};merged=true;}}catch(e){}lastTs=await fbWrite(state);setStatus('live');setOffline(false);if(merged){renderContent();renderTabs();}}catch(e){setStatus(navigator.onLine?'error':'offline');setOffline(!navigator.onLine);}isSaving=false;}
+function startPoll(){if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(async()=>{if(isSaving)return;try{const u=await fbReadUpdatedAt();if(u>lastTs){const d=await fbRead();if(d.updatedAt>lastTs){lastTs=d.updatedAt;state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{},shopBlocked:[]},shopMode:d.shopMode||null,photoLibrary:d.photoLibrary||[]};cacheState();renderContent();renderTabs();}}setOffline(false);}catch(e){setOffline(!navigator.onLine);}},5000);}
 const VAPID_PUB='BHeqNiEDdtZG2JXW-xhJxz8ARfkIPkyfgfQjt5rjf5a4I0nQJZYRqkPGXs-MnDkT6nc3W2lPH9IFlhGMzR4OJ-0';
 function b64ToU8(b64){const p='='.repeat((4-b64.length%4)%4);const r=atob((b64+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)));}
 async function initSW(){if(!('serviceWorker' in navigator))return;try{swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});}catch(e){console.log('SW:',e);}}
@@ -1046,9 +1124,14 @@ let _lastContentHash=null,_lastContentTab=null,_lastTabsHash=null;
 function _hash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return h;}
 function applyContent(c,html,post){const h=_hash(html);if(_lastContentHash===h&&_lastContentTab===tabIdx)return false;_lastContentHash=h;_lastContentTab=tabIdx;const sy=c.scrollTop;c.innerHTML=html;if(sy)c.scrollTop=sy;if(post)post();return true;}
 function renderTabs(){const acc=TABS[tabIdx].accent;document.getElementById('mhdr').style.borderBottomColor=acc;const unread=state.notes.some(n=>n.ts>lastReadNotes&&n.author!==member);const sc=state.shop.filter(x=>!x.done).length,tc=state.todo.filter(x=>!x.done).length;let html=TABS.map((t,i)=>{const active=tabIdx===i,cnt=i===0?sc:i===1?tc:0,hasUnread=i===2&&unread&&tabIdx!==2;return`<button class="tab-btn" onclick="setTab(${i})" style="color:${active?t.accent:'var(--muted)'};border-bottom-color:${active?t.accent:'transparent'};${active?`background:${t.accent}0c`:''}"><span class="tab-icn">${t.icon}</span>${esc(t.label)}${cnt>0?`<span class="tab-cnt" style="background:${active?t.accent+'22':'var(--surf2)'};color:${active?t.accent:'var(--muted)'};border:1px solid ${active?t.accent+'44':'var(--brd)'}">${cnt}</span>`:''}${hasUnread?`<span style="width:7px;height:7px;background:#ef4444;border-radius:50%;display:inline-block;margin-left:1px;flex-shrink:0"></span>`:''}</button>`;}).join('');document.getElementById('tabs').innerHTML=html;const as=document.getElementById('acc-strip');if(as)as.style.background=acc;}
-function cancelPull(){const bar=document.getElementById("ptr-bar"),glow=document.getElementById("ptr-glow"),c=document.getElementById("content");if(bar){bar.style.transition="none";bar.style.opacity="0";bar.style.transform="scaleX(0)";}if(glow){glow.style.transition="none";glow.style.opacity="0";}if(c){c.style.transition="transform .3s ease";c.style.transform="";}ptrPulling=false;}
+function cancelPull(){const bar=document.getElementById("ptr-bar"),glow=document.getElementById("ptr-glow"),c=document.getElementById("content");if(bar){bar.style.transition="none";bar.style.opacity="0";bar.style.transform="scaleX(0)";}if(glow){glow.remove();}if(c){c.style.transition="transform .3s ease";c.style.transform="";}ptrPulling=false;}
+let _pendingTab=null;
 async function setTab(i){
-  if(transitioning||i===tabIdx)return;
+  if(i===tabIdx&&!transitioning){_pendingTab=null;return;}
+  // Queue rapid back-to-back swipes so the second tap doesn't get dropped while
+  // the previous slide is still mid-flight; we'll fire it the moment the
+  // current transition finishes.
+  if(transitioning){_pendingTab=i;return;}
   if(filterSheetOpen)closeFilterSheet();
   captureDraftsForCurrentTab();
   haptic(6);
@@ -1070,7 +1153,7 @@ async function setTab(i){
   c.scrollTop=0;
   // Prepare slide: new content starts offscreen, ghost starts in view
   const SLIDE_EASE='cubic-bezier(.22,1,.36,1)';
-  const SLIDE_MS=440;
+  const SLIDE_MS=320;
   c.style.transition='none';
   c.style.transform=`translate3d(${dir*100}%,0,0) scale(.94)`;
   c.style.opacity='0.4';
@@ -1094,6 +1177,10 @@ async function setTab(i){
     c.style.opacity='';
     c.style.transformOrigin='';
     transitioning=false;
+    if(_pendingTab!=null){
+      const nx=_pendingTab;_pendingTab=null;
+      if(nx!==tabIdx)setTab(nx);
+    }
   },SLIDE_MS+10);
 }
 function setSort(v){if(tabIdx===0)shopSort=v;else todoSort=v;renderContent();if(filterSheetOpen)renderFilterSheetContent();}
@@ -1174,26 +1261,144 @@ function editItem(id){
 function editNote(id){
   const n=state.notes.find(x=>x.id===id);
   if(!n||n.author!==member||n.type==='poll')return;
-  showEditPopup('Edit message',n.text||'',newText=>{
-    if(newText===(n.text||''))return;
-    state.notes=state.notes.map(x=>x.id===id?{...x,text:newText,edited:Date.now()}:x);
+  showMsgEditPopup(n.text||'',n.image||'',(newText,newImage)=>{
+    const oldImage=n.image||'';
+    if(newText===(n.text||'')&&((newImage||'')===oldImage))return;
+    if(!newText&&!newImage){if(!confirm('Delete this message?'))return;state.notes=state.notes.filter(x=>x.id!==id);haptic(8);renderContent();save();return;}
+    state.notes=state.notes.map(x=>{
+      if(x.id!==id)return x;
+      const next={...x,text:newText,edited:Date.now()};
+      if(newImage)next.image=newImage;else delete next.image;
+      return next;
+    });
     haptic(8);renderContent();save();
   });
+}
+function editPoll(id){
+  const n=state.notes.find(x=>x.id===id);
+  if(!n||n.type!=='poll'||n.author!==member)return;
+  showPollEditPopup(n,(newQ,newOpts)=>{
+    if(!newQ||newOpts.length<2)return;
+    const oldOpts=n.opts||[];
+    state.notes=state.notes.map(x=>{
+      if(x.id!==id)return x;
+      // Preserve existing votes when option text is unchanged; new/edited
+      // options start with no votes.
+      const opts=newOpts.map(text=>{const m=oldOpts.find(o=>o.text===text);return m?{text,votes:m.votes||{}}:{text,votes:{}};});
+      return{...x,q:newQ,opts,edited:Date.now()};
+    });
+    haptic(8);renderContent();save();
+  });
+}
+function showPollEditPopup(poll,onSave){
+  if(document.querySelector('.app-popup-back'))return;
+  let q=poll.q||'';
+  let opts=(poll.opts||[]).map(o=>o.text||'');
+  if(opts.length<2)opts=['',''];
+  const back=document.createElement('div');back.className='app-popup-back';
+  document.body.appendChild(back);
+  function build(){
+    const optHTML=opts.map((o,i)=>`<div class="poll-opt-row"><input class="poll-opt-input" data-opt="${i}" placeholder="Option ${i+1}" value="${esc(o)}">${opts.length>2?`<button class="poll-opt-rm" data-rm="${i}">×</button>`:''}</div>`).join('');
+    back.innerHTML=`<div class="app-popup" style="text-align:left;max-width:340px"><div class="app-popup-title" style="text-align:left;margin-bottom:12px">Edit poll</div><input class="poll-q-input" id="poll-edit-q" placeholder="Question" value="${esc(q)}" style="margin-bottom:9px">${optHTML}${opts.length<4?'<button class="poll-add-opt" id="poll-edit-add" style="margin-bottom:11px">+ Option</button>':'<div style="margin-bottom:11px"></div>'}<div style="display:flex;gap:8px"><button class="app-popup-dismiss" style="flex:1;margin-top:0;background:var(--surf2);border:1px solid var(--brd);border-radius:11px;color:var(--sub);padding:11px 0;font-weight:700" data-cancel>Cancel</button><button class="app-popup-btn" style="flex:1" data-save>Save</button></div></div>`;
+    back.querySelector('#poll-edit-q').oninput=e=>{q=e.target.value;};
+    back.querySelectorAll('[data-opt]').forEach(inp=>{inp.oninput=e=>{opts[+inp.dataset.opt]=e.target.value;};});
+    back.querySelectorAll('[data-rm]').forEach(btn=>{btn.onclick=()=>{
+      back.querySelectorAll('[data-opt]').forEach(inp=>{opts[+inp.dataset.opt]=inp.value;});
+      opts.splice(+btn.dataset.rm,1);build();
+    };});
+    const addBtn=back.querySelector('#poll-edit-add');if(addBtn)addBtn.onclick=()=>{
+      back.querySelectorAll('[data-opt]').forEach(inp=>{opts[+inp.dataset.opt]=inp.value;});
+      if(opts.length<4){opts.push('');build();}
+    };
+    back.querySelector('[data-cancel]').onclick=close;
+    back.querySelector('[data-save]').onclick=()=>{
+      back.querySelectorAll('[data-opt]').forEach(inp=>{opts[+inp.dataset.opt]=inp.value;});
+      const filtered=opts.map(o=>(o||'').trim()).filter(Boolean);
+      const trimmedQ=(q||'').trim();
+      back.remove();onSave(trimmedQ,filtered);
+    };
+  }
+  build();
+  requestAnimationFrame(()=>back.classList.add('open'));
+  const close=()=>back.remove();
+  back.addEventListener('click',e=>{if(e.target===back)close();});
+}
+function _pickMsgPhotoForEdit(useCamera,onUrl){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';if(useCamera)inp.capture='environment';
+  inp.onchange=async e=>{
+    const file=e.target.files&&e.target.files[0];if(!file){inp.value='';return;}
+    const isGif=(file.type==='image/gif')||/\.gif$/i.test(file.name||'');
+    showToast('Uploading photo…');
+    try{
+      let blob=file;
+      if(!isGif){
+        const dataUrl=await _readFileAsDataUrl(file);
+        const img=await _loadImage(dataUrl);
+        const MAX=720,ratio=Math.min(MAX/img.width,MAX/img.height,1);
+        const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*ratio));c.height=Math.max(1,Math.round(img.height*ratio));c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+        const compressed=await new Promise(r=>c.toBlob(r,'image/jpeg',0.85));
+        blob=compressed||file;
+      }
+      const ct=blob.type||(isGif?'image/gif':'image/jpeg');
+      const res=await fetch(PUSH_RELAY+'/photo',{method:'POST',headers:{'Content-Type':ct},body:blob,signal:AbortSignal.timeout(30000)});
+      if(!res.ok)throw new Error('upload');
+      const d=await res.json();if(!d||!d.url)throw new Error('no url');
+      _addToPhotoLibrary(d.url);save();
+      onUrl(d.url);
+    }catch(err){showToast('Photo upload failed — try again');}
+    finally{inp.value='';}
+  };
+  inp.click();
+}
+function showMsgEditPopup(initialText,initialImage,onSave){
+  if(document.querySelector('.app-popup-back'))return;
+  let curImage=initialImage||'';
+  const back=document.createElement('div');back.className='app-popup-back';
+  back.innerHTML=`<div class="app-popup" style="text-align:left;max-width:340px"><div class="app-popup-title" style="text-align:left;margin-bottom:12px">Edit message</div><textarea class="edit-input" rows="3"></textarea><div id="msg-edit-img" style="margin-bottom:10px"></div><div style="display:flex;gap:8px;margin-bottom:12px"><button id="msg-edit-add" style="flex:1;padding:10px 8px;border-radius:11px;border:1px solid var(--brd);background:var(--surf2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px"></button><button id="msg-edit-rm" style="flex:1;padding:10px 8px;border-radius:11px;border:1px solid #ef444466;background:transparent;color:#ef4444;font-size:12px;font-weight:700;cursor:pointer;display:none">Remove photo</button></div><div style="display:flex;gap:8px"><button class="app-popup-dismiss" style="flex:1;margin-top:0;background:var(--surf2);border:1px solid var(--brd);border-radius:11px;color:var(--sub);padding:11px 0;font-weight:700" data-cancel>Cancel</button><button class="app-popup-btn" style="flex:1" data-save>Save</button></div></div>`;
+  document.body.appendChild(back);
+  const ta=back.querySelector('textarea');ta.value=initialText||'';
+  const imgArea=back.querySelector('#msg-edit-img');
+  const addBtn=back.querySelector('#msg-edit-add');
+  const rmBtn=back.querySelector('#msg-edit-rm');
+  function refresh(){
+    if(curImage){imgArea.innerHTML=`<div class="msg-preview" style="margin:0"><img src="${esc(curImage)}"></div>`;rmBtn.style.display='';addBtn.innerHTML=`${iconSvg('image',14)}<span>Replace photo</span>`;}
+    else{imgArea.innerHTML='';rmBtn.style.display='none';addBtn.innerHTML=`${iconSvg('image',14)}<span>Add photo</span>`;}
+  }
+  refresh();
+  rmBtn.onclick=()=>{curImage='';refresh();};
+  addBtn.onclick=()=>{
+    const lib=state.photoLibrary||[];
+    showPhotoSourcePicker({
+      hasLibrary:lib.length>0,
+      onLibrary:()=>showPhotoLibrary(url=>{curImage=url;refresh();}),
+      onPhone:()=>_pickMsgPhotoForEdit(false,url=>{curImage=url;refresh();}),
+      onCamera:()=>_pickMsgPhotoForEdit(true,url=>{curImage=url;refresh();})
+    });
+  };
+  requestAnimationFrame(()=>back.classList.add('open'));
+  setTimeout(()=>{ta.focus();const v=ta.value;ta.setSelectionRange(v.length,v.length);},80);
+  const close=()=>back.remove();
+  back.querySelector('[data-cancel]').onclick=close;
+  const doSave=()=>{const v=ta.value.trim();back.remove();onSave(v,curImage||null);};
+  back.querySelector('[data-save]').onclick=doSave;
+  ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSave();}});
+  back.addEventListener('click',e=>{if(e.target===back)close();});
 }
 function bindNoteGestures(noteEl){
   if(!noteEl||noteEl._gb)return;noteEl._gb=true;
   const id=noteEl.dataset.noteid;if(!id)return;
   const HOLD_MS=300;const MOVE_TOL=10;
-  let pressTimer=null,sx=0,sy=0;
+  let pressTimer=null,sx=0,sy=0,didLong=false;
   function arm(e){
+    didLong=false;
     const t=e.touches[0];sx=t.clientX;sy=t.clientY;
     if(pressTimer)clearTimeout(pressTimer);
     pressTimer=setTimeout(()=>{
-      pressTimer=null;
+      pressTimer=null;didLong=true;
       const n=state.notes.find(x=>x.id===id);if(!n)return;
       const isMine=n.author===member,isPoll=n.type==='poll';
       const items=[];
-      if(isMine&&!isPoll)items.push({label:'Edit',fn:()=>editNote(id)});
+      if(isMine)items.push({label:'Edit',fn:()=>isPoll?editPoll(id):editNote(id)});
       if(!isPoll)items.push({label:'Reply',fn:()=>startReply(id)});
       if(isMine)items.push({label:'Delete',danger:true,fn:()=>delNote(id)});
       if(!items.length)return;
@@ -1205,8 +1410,11 @@ function bindNoteGestures(noteEl){
   function cancel(){if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}}
   noteEl.addEventListener('touchstart',arm,{passive:true});
   noteEl.addEventListener('touchmove',e=>{if(!pressTimer)return;const t=e.touches[0];if(Math.abs(t.clientX-sx)>MOVE_TOL||Math.abs(t.clientY-sy)>MOVE_TOL)cancel();},{passive:true});
-  noteEl.addEventListener('touchend',cancel);
+  noteEl.addEventListener('touchend',e=>{cancel();if(didLong){try{e.preventDefault();}catch(_){}}});
   noteEl.addEventListener('touchcancel',cancel);
+  // Eat the synthetic click that follows a long-press, so opening the menu on
+  // a poll option doesn't ALSO register a vote on that option.
+  noteEl.addEventListener('click',e=>{if(didLong){e.stopPropagation();e.preventDefault();didLong=false;}},true);
 }
 function bindItemGestures(itemEl){
   if(itemEl._gb)return;itemEl._gb=true;
@@ -1344,8 +1552,11 @@ function initTabSwipe(){
 function initPullRefresh(){
   const c=document.getElementById('content');
   if(!c||c._ptr)return;c._ptr=true;
-  let sy=0,sx2=0,triggered=false;
+  // Old bigger glow element is gone — clean up if a previous render left one behind
+  document.getElementById('ptr-glow')?.remove();
+  let sy=0,sx2=0,triggered=false,startedAtTop=false,_lastScrollTs=0;
   function memberColor(){return member?getMem(member).color:(TABS[tabIdx].accent||'#0ea5e9');}
+  c.addEventListener('scroll',()=>{_lastScrollTs=Date.now();},{passive:true});
 
   let bar=document.getElementById('ptr-bar');
   if(!bar){
@@ -1354,29 +1565,27 @@ function initPullRefresh(){
     bar.innerHTML='<div id="ptr-shine" style="position:absolute;top:0;bottom:0;width:120px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);transform:translateX(-120px);pointer-events:none;"></div>';
     document.body.appendChild(bar);
   }
-  let glow=document.getElementById('ptr-glow');
-  if(!glow){
-    glow=document.createElement('div');glow.id='ptr-glow';
-    glow.style.cssText='position:fixed;top:0;left:0;right:0;height:20px;z-index:9998;opacity:0;pointer-events:none;filter:blur(8px);';
-    document.body.appendChild(glow);
-  }
-  function setCol(col){bar.style.background=col;glow.style.background=col;bar.style.boxShadow=`0 0 16px 3px ${col}aa`;}
-  function setPct(p){bar.style.transform=`scaleX(${p})`;glow.style.transform=`scaleX(${p})`;}
+  function setCol(col){bar.style.background=col;bar.style.boxShadow=`0 0 14px 2px ${col}aa`;}
+  function setPct(p){bar.style.transform=`scaleX(${p})`;}
   function reset(){
     bar.style.transition='opacity .3s';bar.style.opacity='0';
-    glow.style.transition='opacity .3s';glow.style.opacity='0';
     c.style.transition='transform .3s cubic-bezier(.32,.72,.18,1)';c.style.transform='';
-    setTimeout(()=>{c.style.transition='';bar.style.transition='none';setPct(0);glow.style.transition='none';},320);
-    ptrPulling=false;triggered=false;
+    setTimeout(()=>{c.style.transition='';bar.style.transition='none';setPct(0);},320);
+    ptrPulling=false;triggered=false;startedAtTop=false;
   }
 
   c.addEventListener('touchstart',e=>{
-    if(c.scrollTop!==0||ptrRefreshing)return;
+    // Strict: only arm PTR when the finger lands while the list is genuinely
+    // at the top, momentum scroll has settled, and no refresh is in flight.
+    // Without the recent-scroll guard, a fast scroll-up that bounces past 0
+    // would arm PTR on the same gesture.
+    startedAtTop=(c.scrollTop===0)&&(Date.now()-_lastScrollTs>180);
+    if(!startedAtTop||ptrRefreshing)return;
     sy=e.touches[0].clientY;sx2=e.touches[0].clientX;
     ptrPulling=true;triggered=false;
     const col=memberColor();setCol(col);
-    bar.style.transition='none';glow.style.transition='none';
-    bar.style.opacity='0';glow.style.opacity='0';setPct(0);
+    bar.style.transition='none';
+    bar.style.opacity='0';setPct(0);
   },{passive:true});
 
   c.addEventListener('touchmove',e=>{
@@ -1391,7 +1600,6 @@ function initPullRefresh(){
     c.style.transition='none';
     c.style.transform=`translate3d(0,${pull}px,0)`;
     bar.style.opacity='1';
-    glow.style.opacity='0';
     setPct(pct);
     if(pct>=1&&!triggered){
       triggered=true;
@@ -1410,27 +1618,35 @@ function initPullRefresh(){
     c.style.transition='transform .22s ease';
     c.style.transform='translate3d(0,72px,0) scale(0.985)';
     bar.style.transition='transform .12s ease';setPct(1);
-    glow.style.transition='transform .12s ease';
     await sleep(130);
     const shine=document.getElementById('ptr-shine');
     let shining=true;
     (async()=>{while(shining){shine.style.transition='none';shine.style.transform='translateX(-120px)';await sleep(30);shine.style.transition='transform .65s linear';shine.style.transform='translateX(calc(100vw + 120px))';await sleep(900);}shine.style.transform='translateX(-120px)';})();
-    bar.style.animation='ptr-loading 1s ease infinite';
-    glow.style.animation='ptr-loading 1s ease infinite';
+    // Flash through the family colours, starting and ending on the user's own
+    const myCol=memberColor();
+    const others=MEMBERS.map(m=>m.color).filter(col=>col!==myCol);
+    const cycle=[myCol,...others,myCol];
+    let cycleI=0;
+    setCol(cycle[0]);
+    const cycleTimer=setInterval(()=>{
+      cycleI=(cycleI+1)%cycle.length;
+      bar.style.transition='background .14s linear,box-shadow .14s linear';
+      setCol(cycle[cycleI]);
+    },170);
     const t0=Date.now();
-    try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{}},shopMode:d.shopMode||null};lastTs=d.updatedAt;cacheState();setOffline(false);}catch(e2){}
+    try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{}},shopMode:d.shopMode||null,photoLibrary:d.photoLibrary||[]};lastTs=d.updatedAt;cacheState();setOffline(false);}catch(e2){}
     const elapsed=Date.now()-t0;
     if(elapsed<950)await sleep(950-elapsed);
     shining=false;
+    clearInterval(cycleTimer);
+    bar.style.transition='background .18s linear,box-shadow .18s linear';
+    setCol(myCol);
     renderContent();renderTabs();
-    bar.style.animation='none';
-    for(let i=0;i<4;i++){bar.style.opacity='0.2';await sleep(80);bar.style.opacity='1';await sleep(80);}
     haptic(15);
     c.style.transition='transform .3s cubic-bezier(.34,1.56,.64,1)';c.style.transform='translate3d(0,-6px,0)';await sleep(180);c.style.transition='transform .25s ease';c.style.transform='';
     await sleep(180);
     bar.style.transition='opacity .5s ease,transform .4s ease';bar.style.opacity='0';
-    glow.style.transition='opacity .4s ease';glow.style.opacity='0';
-    setTimeout(()=>{c.style.transition='';c.style.transform='';bar.style.transition='none';setPct(0);glow.style.transition='none';ptrRefreshing=false;},550);
+    setTimeout(()=>{c.style.transition='';c.style.transform='';bar.style.transition='none';setPct(0);ptrRefreshing=false;},550);
   },{passive:true});
 }
 function buildMsgs(){const acc=TABS[2].accent,me=getMem(member);const notices=state.notices||[];const noticeBlock=!notices.length&&!showNoticeCompose?'':(notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span><button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span>${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}</div>${showNoticeCompose?noticeCompose():''}</div>`);const feed=state.notes.length===0?`<div class="empty"><div class="empty-icon">${iconSvg('notes',24)}</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`:[...state.notes].sort((a,b)=>((b.type==='poll'&&b.pinned)?1:0)-((a.type==='poll'&&a.pinned)?1:0)).map(n=>{const auth=getMem(n.author),isMe=n.author===member;if(n.type==='poll')return renderPollBubble(n,auth,isMe);const rx=n.reactions||{};const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');const rxbarHTML=`<div class="rbar" id="rb${n.id}">${rxH}<button class="radd" onclick="showPicker(event,'${n.id}')">+</button></div>`;const bottomHTML=`<div class="nbottom-end">${rxbarHTML}</div>`;const imgHTML=n.image?`<img class="nimg" src="${esc(n.image)}" onclick="viewPhoto('${esc(n.image)}')">`:'';const textHTML=n.text?`<div class="ntext">${esc(n.text)}</div>`:'';const replyTo=n.replyTo;const rt=replyTo?`<div class="nreplyto" onclick="scrollToNote('${esc(replyTo.id)}')"><span class="nreplyto-author" style="color:${getMem(replyTo.author).color}">${esc(replyTo.author)}</span><span class="nreplyto-text">${replyTo.hasImage?`<span class="nreplyto-img">${iconSvg('image',10)}</span>`:''}${esc(replyTo.text||(replyTo.hasImage?'(image)':'(message)'))}</span></div>`:'';const bubbleHTML=`<div class="nbubble ${isMe?'mine':'theirs'}${n.image&&!n.text&&!rt?' img-only':''}" style="background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}">${rt}${imgHTML}${textHTML}</div>`;const bodyHTML=isMe?`<div class="nbubble-col">${bubbleHTML}${bottomHTML}</div>`:`${bubbleHTML}${bottomHTML}`;return`<div class="nwrap ${isMe?'mine':'theirs'}" data-noteid="${n.id}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div>${bodyHTML}</div>`;}).join('');const previewHTML=pendingMsgImage?`<div class="msg-preview"><img id="msg-preview-img" src="${esc(pendingMsgImage)}"><button class="msg-preview-rm" onclick="cancelMsgImage()" title="Remove">×</button></div>`:(pendingMsgUploading?`<div class="msg-preview"><div class="msg-preview-up">Uploading…</div></div>`:'');const replyBarHTML=replyingTo?`<div class="reply-bar"><span class="reply-bar-icon">${iconSvg('reply',13)}</span><span class="reply-bar-text">Replying to <b style="color:${getMem(replyingTo.author).color}">${esc(replyingTo.author)}</b>: ${replyingTo.hasImage&&!replyingTo.text?`${iconSvg('image',11)} image`:esc((replyingTo.text||'').slice(0,80))}</span><button class="reply-bar-x" onclick="cancelReply()" title="Cancel reply">×</button></div>`:'';const composeSection=showNoticeCompose&&!notices.length?'':`<div class="msg-compose" style="border-top-color:${acc}">${replyBarHTML}<textarea class="msg-ta" id="ni" placeholder="Message the family…" style="caret-color:${acc}"></textarea>${previewHTML}<div class="msg-ft"><div class="msg-actions"><button class="msg-tool-btn" onclick="attachMsgImage()" title="Attach image / GIF">${iconSvg('image',14)}</button><button class="msg-tool-btn" onclick="showPollCompose=!showPollCompose;renderContent()" title="Create poll">${iconSvg('poll',14)}</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div></div></div>${showPollCompose?buildPollCompose():''}`;return`${notifBar()}${shopModeActive()?renderShopModeUI():''}${noticeBlock}${composeSection}<div class="msg-feed">${feed}</div><div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;}
@@ -1441,14 +1657,104 @@ function unpinNotice(id){state.notices=(state.notices||[]).filter(n=>n.id!==id);
 function buildPollCompose(){const opts=pollOpts.map((o,i)=>`<div class="poll-opt-row"><input class="poll-opt-input" placeholder="Option ${i+1}" value="${esc(o)}" oninput="pollOpts[${i}]=this.value">${pollOpts.length>2?`<button class="poll-opt-rm" onclick="pollOpts.splice(${i},1);renderContent()">×</button>`:''}</div>`).join('');return`<div class="poll-compose" style="margin:8px 12px 0"><input class="poll-q-input" id="poll-q" placeholder="Ask the family something…" value="${esc(pollQ)}" oninput="pollQ=this.value">${opts}<div class="poll-actions">${pollOpts.length<4?`<button class="poll-add-opt" onclick="pollOpts.push('');renderContent()">+ Option</button>`:''}<button class="poll-submit" style="background:${TABS[2].accent}" onclick="postPoll()">Post Poll</button><button class="poll-cancel" onclick="showPollCompose=false;pollOpts=['',''];pollQ='';renderContent()">Cancel</button></div></div>`;}
 function postPoll(){const q=(pollQ||'').trim(),opts=pollOpts.filter(o=>o.trim());if(!q||opts.length<2)return;const poll={id:genId(),q,opts:opts.map(o=>({text:o,votes:{}})),author:member,ts:Date.now(),type:'poll'};state.notes=[poll,...state.notes];showPollCompose=false;pollOpts=['',''];pollQ='';renderContent();save();queueNotif('msg',member,q);}
 function votePoll(nid,oi){state.notes=state.notes.map(n=>{if(n.id!==nid||n.type!=='poll')return n;const opts=n.opts.map(o=>{const v={...(o.votes||{})};delete v[member];return{...o,votes:v};}).map((o,i)=>i===oi?{...o,votes:{...(o.votes||{}),[member]:true}}:o);return{...n,opts};});haptic(10);renderContent();save();}
-function renderPollBubble(n,auth,isMe){const total=n.opts.reduce((s,o)=>s+Object.keys(o.votes||{}).length,0);const myV=n.opts.findIndex(o=>(o.votes||{})[member]);const opts=n.opts.map((o,i)=>{const cnt=Object.keys(o.votes||{}).length,pct=total?Math.round(cnt/total*100):0,voted=myV===i;return`<div class="poll-option${voted?' voted':''}" style="color:${voted?auth.color:'var(--sub)'}" onclick="votePoll('${n.id}',${i})"><div class="poll-bar" style="width:${pct}%;background:${auth.color}"></div><div class="poll-inner"><span>${esc(o.text)}${voted?' ✓':''}</span><span class="poll-pct">${total?pct+'%':''}</span></div></div>`;}).join('');return`<div class="nwrap ${isMe?'mine':'theirs'}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div><div class="nbubble ${isMe?'mine':'theirs'}" style="min-width:200px;background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}"><div class="poll-question">${n.pinned?`<span style="color:#f59e0b;font-size:10px;margin-right:6px;display:inline-flex;align-items:center;gap:3px;vertical-align:middle">${iconSvg('pin',10)}PINNED</span>`:''}${esc(n.q)}</div>${opts}<div class="poll-voters">${total} vote${total!==1?'s':''}</div></div><div style="display:flex;gap:10px;${isMe?'flex-direction:row-reverse':''}"><button class="ndel" onclick="togglePinPoll('${n.id}')">${n.pinned?'Unpin':'Pin'}</button>${isMe?`<button class="ndel" onclick="delNote('${n.id}')">Delete poll</button>`:''}</div></div>`;}
+function renderPollBubble(n,auth,isMe){const total=n.opts.reduce((s,o)=>s+Object.keys(o.votes||{}).length,0);const myV=n.opts.findIndex(o=>(o.votes||{})[member]);const opts=n.opts.map((o,i)=>{const cnt=Object.keys(o.votes||{}).length,pct=total?Math.round(cnt/total*100):0,voted=myV===i;return`<div class="poll-option${voted?' voted':''}" style="color:${voted?auth.color:'var(--sub)'}" onclick="votePoll('${n.id}',${i})"><div class="poll-bar" style="width:${pct}%;background:${auth.color}"></div><div class="poll-inner"><span>${esc(o.text)}${voted?' ✓':''}</span><span class="poll-pct">${total?pct+'%':''}</span></div></div>`;}).join('');return`<div class="nwrap ${isMe?'mine':'theirs'}" data-noteid="${n.id}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div><div class="nbubble ${isMe?'mine':'theirs'}" style="min-width:200px;background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}"><div class="poll-question">${n.pinned?`<span style="color:#f59e0b;font-size:10px;margin-right:6px;display:inline-flex;align-items:center;gap:3px;vertical-align:middle">${iconSvg('pin',10)}PINNED</span>`:''}${esc(n.q)}</div>${opts}<div class="poll-voters">${total} vote${total!==1?'s':''}</div></div><div style="display:flex;gap:10px;${isMe?'flex-direction:row-reverse':''}"><button class="ndel" onclick="togglePinPoll('${n.id}')">${n.pinned?'Unpin':'Pin'}</button>${isMe?`<button class="ndel" onclick="delNote('${n.id}')">Delete poll</button>`:''}</div></div>`;}
 function togglePinPoll(nid){state.notes=state.notes.map(n=>n.id!==nid?n:{...n,pinned:!n.pinned});haptic(8);renderContent();save();}
 function showPicker(e,nid){e.stopPropagation();document.querySelectorAll('.epicker').forEach(p=>p.remove());if(openPicker===nid){openPicker=null;return;}openPicker=nid;const rbar=document.getElementById('rb'+nid);if(!rbar)return;const p=document.createElement('div');p.className='epicker';p.innerHTML=EMOJIS.map(em=>`<button class="eopt" onclick="toggleRx('${nid}','${em}');closePicker()">${em}</button>`).join('');p.style.visibility='hidden';p.style.left='-9999px';p.style.top='-9999px';document.body.appendChild(p);const pw=p.offsetWidth,ph=p.offsetHeight;const rect=rbar.getBoundingClientRect();const isMine=!!rbar.closest('.nwrap.mine');const margin=8;let left=isMine?(rect.right-pw):rect.left;left=Math.max(margin,Math.min(left,window.innerWidth-pw-margin));let top=rect.top-ph-6;if(top<60)top=rect.bottom+6;p.style.left=left+'px';p.style.top=top+'px';p.style.visibility='';const close=()=>closePicker();const cnt=document.getElementById('content');if(cnt)cnt.addEventListener('scroll',close,{once:true,passive:true});window.addEventListener('resize',close,{once:true});setTimeout(()=>document.addEventListener('click',close,{once:true}),10);}
 function closePicker(){document.querySelectorAll('.epicker').forEach(p=>p.remove());openPicker=null;}
 function toggleRx(nid,emoji){closePicker();haptic(8);state.notes=state.notes.map(n=>{if(n.id!==nid)return n;const rx={...(n.reactions||{})},who=[...(rx[emoji]||[])];const idx=who.indexOf(member);if(idx>=0)who.splice(idx,1);else who.push(member);if(!who.length)delete rx[emoji];else rx[emoji]=who;return{...n,reactions:rx};});renderContent();save();}
 function showUndoToast(msg,onUndo){document.querySelector('.undo-toast')?.remove();const t=document.createElement('div');t.className='undo-toast';t.innerHTML=`<span class="undo-txt">${msg}</span><button class="undo-btn" onclick="this.closest('.undo-toast')._undo()">Undo</button>`;t._undo=()=>{clearTimeout(undoTimer);t.remove();onUndo();};document.body.appendChild(t);undoTimer=setTimeout(()=>t.remove(),4500);}
 function showToast(msg){document.querySelector('.undo-toast')?.remove();const t=document.createElement('div');t.className='undo-toast';t.innerHTML=`<span class="undo-txt">${esc(msg)}</span>`;document.body.appendChild(t);clearTimeout(undoTimer);undoTimer=setTimeout(()=>t.remove(),3500);}
-function addPhoto(itemId){const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.capture='environment';inp.onchange=e=>{const file=e.target.files[0];if(!file)return;const canvas=document.createElement('canvas'),img=new Image();img.onload=()=>{const MAX=320,ratio=Math.min(MAX/img.width,MAX/img.height,1);canvas.width=img.width*ratio;canvas.height=img.height*ratio;canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);const b64=canvas.toDataURL('image/jpeg',0.75);const k=tabIdx===0?'shop':'todo';state[k]=state[k].map(i=>i.id===itemId?{...i,photo:b64}:i);renderContent();save();canvas.toBlob(async blob=>{if(!blob)return;try{const res=await fetch(PUSH_RELAY+'/photo',{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});if(!res.ok)return;const d=await res.json();if(d&&d.url){state[k]=state[k].map(i=>i.id===itemId&&i.photo===b64?{...i,photo:d.url}:i);renderContent();save();}}catch(err){}},'image/jpeg',0.75);};img.src=URL.createObjectURL(file);};inp.click();}
+function _addToPhotoLibrary(url){if(!url)return;state.photoLibrary=state.photoLibrary||[];if(state.photoLibrary.some(p=>p&&p.url===url))return;state.photoLibrary=[{id:genId(),url,ts:Date.now(),addedBy:member||'?'},...state.photoLibrary].slice(0,80);}
+function showPhotoSourcePicker(opts){
+  if(document.querySelector('.app-popup-back'))return;
+  const back=document.createElement('div');back.className='app-popup-back';
+  const libBtn=opts.hasLibrary?`<button class="app-popup-btn" style="margin-bottom:8px;background:linear-gradient(145deg,#a78bfa,#8b5cf6)" data-lib>From Library</button>`:'';
+  back.innerHTML=`<div class="app-popup" style="text-align:left"><div class="app-popup-title" style="text-align:center;margin-bottom:14px">Add Photo</div>${libBtn}<button class="app-popup-btn" style="margin-bottom:8px;background:linear-gradient(145deg,#60a5fa,#818cf8)" data-phone>Phone Library</button><button class="app-popup-btn" style="margin-bottom:0;background:linear-gradient(145deg,#34d399,#10b981)" data-cam>Camera</button><button class="app-popup-dismiss" data-cancel>Cancel</button></div>`;
+  document.body.appendChild(back);
+  requestAnimationFrame(()=>back.classList.add('open'));
+  const close=()=>back.remove();
+  const lib=back.querySelector('[data-lib]');if(lib)lib.onclick=()=>{close();opts.onLibrary&&opts.onLibrary();};
+  back.querySelector('[data-phone]').onclick=()=>{close();opts.onPhone&&opts.onPhone();};
+  back.querySelector('[data-cam]').onclick=()=>{close();opts.onCamera&&opts.onCamera();};
+  back.querySelector('[data-cancel]').onclick=close;
+  back.addEventListener('click',e=>{if(e.target===back)close();});
+}
+function showPhotoLibrary(onPick){
+  const lib=state.photoLibrary||[];
+  if(!lib.length){showToast('Library is empty — add a photo first');return;}
+  if(document.querySelector('.app-popup-back'))return;
+  const back=document.createElement('div');back.className='app-popup-back';
+  back.innerHTML=`<div class="app-popup" style="max-width:360px;text-align:left"><div class="app-popup-title" style="margin-bottom:4px">Photo Library</div><div class="app-popup-sub" style="margin-bottom:12px;text-align:left">Tap to use · × to remove</div><div class="lib-grid"></div><button class="app-popup-dismiss" style="margin-top:6px" data-cancel>Cancel</button></div>`;
+  document.body.appendChild(back);
+  const grid=back.querySelector('.lib-grid');
+  function renderGrid(){
+    const cur=state.photoLibrary||[];
+    if(!cur.length){back.remove();return;}
+    grid.innerHTML=cur.map((p,i)=>`<div class="lib-photo-wrap" data-i="${i}"><img class="lib-photo" src="${esc(p.url)}" loading="lazy"><button class="lib-photo-rm" title="Remove from library">×</button></div>`).join('');
+    grid.querySelectorAll('.lib-photo').forEach((img,i)=>{img.onclick=()=>{const url=cur[i].url;back.remove();onPick(url);};});
+    grid.querySelectorAll('.lib-photo-rm').forEach((btn,i)=>{btn.onclick=ev=>{ev.stopPropagation();const url=cur[i].url;state.photoLibrary=(state.photoLibrary||[]).filter(p=>p.url!==url);haptic(8);save();renderGrid();};});
+  }
+  renderGrid();
+  requestAnimationFrame(()=>back.classList.add('open'));
+  const close=()=>back.remove();
+  back.querySelector('[data-cancel]').onclick=close;
+  back.addEventListener('click',e=>{if(e.target===back)close();});
+}
+function _readFileAsDataUrl(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('read'));r.readAsDataURL(file);});}
+function _loadImage(src){return new Promise((res,rej)=>{const img=new Image();img.onload=()=>res(img);img.onerror=()=>rej(new Error('img'));img.src=src;});}
+async function _dataUrlToBlob(dataUrl){try{const r=await fetch(dataUrl);return await r.blob();}catch(e){return null;}}
+function _pickAndProcessItemPhoto(itemId,useCamera){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';if(useCamera)inp.capture='environment';
+  inp.onchange=async e=>{
+    const file=e.target.files&&e.target.files[0];if(!file){inp.value='';return;}
+    const k=tabIdx===0?'shop':'todo';
+    try{
+      // FileReader is more reliable than URL.createObjectURL on iOS — fixes
+      // the "first camera shot doesn't attach" race where the Image never
+      // fired onload from a blob URL.
+      const dataUrl=await _readFileAsDataUrl(file);
+      const img=await _loadImage(dataUrl);
+      const canvas=document.createElement('canvas');
+      const MAX=320,ratio=Math.min(MAX/img.width,MAX/img.height,1);
+      canvas.width=Math.max(1,Math.round(img.width*ratio));
+      canvas.height=Math.max(1,Math.round(img.height*ratio));
+      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+      const b64=canvas.toDataURL('image/jpeg',0.75);
+      state[k]=state[k].map(i=>i.id===itemId?{...i,photo:b64}:i);
+      renderContent();save();
+      let blob=await new Promise(res=>canvas.toBlob(res,'image/jpeg',0.75));
+      // Some iOS WebKit builds return null from toBlob — fall back to fetch(b64)
+      if(!blob)blob=await _dataUrlToBlob(b64);
+      if(!blob){showToast('Photo upload failed — try again');return;}
+      try{
+        const res=await fetch(PUSH_RELAY+'/photo',{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob,signal:AbortSignal.timeout(30000)});
+        if(!res.ok)throw new Error('upload');
+        const d=await res.json();
+        if(d&&d.url){
+          state[k]=state[k].map(i=>i.id===itemId&&i.photo===b64?{...i,photo:d.url}:i);
+          _addToPhotoLibrary(d.url);
+          renderContent();save();
+        }
+      }catch(err){showToast('Photo upload failed — saved locally');}
+    }catch(err){
+      showToast('Photo failed to load — try again');
+    }finally{inp.value='';}
+  };
+  inp.click();
+}
+function addPhoto(itemId){
+  const lib=state.photoLibrary||[];
+  showPhotoSourcePicker({
+    hasLibrary:lib.length>0,
+    onLibrary:()=>showPhotoLibrary(url=>{
+      const k=tabIdx===0?'shop':'todo';
+      state[k]=state[k].map(i=>i.id===itemId?{...i,photo:url}:i);
+      haptic(8);renderContent();save();
+    }),
+    onPhone:()=>_pickAndProcessItemPhoto(itemId,false),
+    onCamera:()=>_pickAndProcessItemPhoto(itemId,true)
+  });
+}
 async function _uploadMsgBlob(rawBlob,isGif){let blob=rawBlob;if(!isGif){try{const url=URL.createObjectURL(rawBlob);const img=new Image();await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});const MAX=720,ratio=Math.min(MAX/img.width,MAX/img.height,1);const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*ratio));c.height=Math.max(1,Math.round(img.height*ratio));c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);const compressed=await new Promise(res=>c.toBlob(res,'image/jpeg',0.85));blob=compressed||rawBlob;}catch(err){blob=rawBlob;}}if(!blob||!blob.size){setStatus('error');showToast('Image attach failed — try again');return;}const ta=document.getElementById('ni'),tasaved=ta?ta.value:'';pendingMsgUploading=true;pendingMsgImage=URL.createObjectURL(blob);renderContent();const taAfter=document.getElementById('ni');if(taAfter&&tasaved)taAfter.value=tasaved;setStatus('saving');try{const ct=blob.type||(isGif?'image/gif':'image/jpeg');const res=await fetch(PUSH_RELAY+'/photo',{method:'POST',headers:{'Content-Type':ct},body:blob,signal:AbortSignal.timeout(30000)});if(!res.ok)throw new Error('upload');const d=await res.json();if(!d||!d.url)throw new Error('no url');pendingMsgImage=d.url;pendingMsgUploading=false;setStatus('live');const ta2=document.getElementById('ni'),tasaved2=ta2?ta2.value:'';renderContent();const ta3=document.getElementById('ni');if(ta3&&tasaved2)ta3.value=tasaved2;}catch(err){pendingMsgUploading=false;pendingMsgImage=null;setStatus('error');renderContent();showToast('Image upload failed — try again');}}
 function attachMsgImage(){if(pendingMsgUploading)return;const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=async e=>{const file=e.target.files&&e.target.files[0];if(!file){inp.value='';return;}const isGif=(file.type==='image/gif')||/\.gif$/i.test(file.name||'');try{await _uploadMsgBlob(file,isGif);}finally{inp.value='';}};inp.click();}
 function handleMsgPaste(e){if(pendingMsgUploading)return;const items=e.clipboardData&&e.clipboardData.items;if(!items)return;for(const item of items){if(item.type&&item.type.startsWith('image/')){e.preventDefault();const blob=item.getAsFile();if(!blob)return;const isGif=item.type==='image/gif';_uploadMsgBlob(blob,isGif);return;}}}
@@ -1529,7 +1835,7 @@ function showInstallPopup(){
   requestAnimationFrame(()=>back.classList.add('open'));
 }
 async function initPush(){if(!('serviceWorker' in navigator)||!('PushManager' in window))return;if(Notification.permission!=='granted')return;try{if(!swReg)swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});await navigator.serviceWorker.ready;let sub=await swReg.pushManager.getSubscription();if(!sub){try{sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});}catch(e){return;}}const key=sub.endpoint.split('/').pop().replace(/[^a-zA-Z0-9]/g,'').slice(-20)||'sub'+Date.now();await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...sub.toJSON(),member,refreshedAt:Date.now()})});}catch(e){}}
-async function init(){try{syncDvh();window.addEventListener('resize',syncDvh);window.addEventListener('orientationchange',syncDvh);window.addEventListener('load',()=>{syncDvh();setTimeout(syncDvh,80);setTimeout(syncDvh,400);});if(window.visualViewport){window.visualViewport.addEventListener('resize',syncDvh);}}catch(e){}try{initTheme();}catch(e){}showScreen('loading');const cache=loadCache();if(cache){state=cache.state;}try{await initSW();}catch(e){}try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{}},shopMode:d.shopMode||null};lastTs=d.updatedAt;cacheState();setStatus('live');setOffline(false);}catch(e){if(!cache){setStatus('error');renderLogin();showScreen('login');return;}setStatus('offline');setOffline(true);}try{renderLogin();const saved=localStorage.getItem('cfh_member');const ok=saved&&MEMBERS.find(m=>m.name===saved);if(ok){selectMember(saved);}else{showScreen('login');}startPoll();}catch(e){showScreen('login');}try{initPush();}catch(e){}try{checkVersionUpdate();}catch(e){}try{checkInstallPrompt();}catch(e){}window.addEventListener('online',()=>{setOffline(false);setStatus('live');save();});window.addEventListener('offline',()=>{setOffline(true);setStatus('offline');});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}else if(member){try{initPush();}catch(e){}if(!pollTimer)startPoll();(async()=>{try{const d=await fbRead();if(d.updatedAt>lastTs){lastTs=d.updatedAt;state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{}},shopMode:d.shopMode||null};cacheState();renderContent();renderTabs();}setOffline(false);}catch(e){setOffline(!navigator.onLine);}})();}});}
+async function init(){try{syncDvh();window.addEventListener('resize',syncDvh);window.addEventListener('orientationchange',syncDvh);window.addEventListener('load',()=>{syncDvh();setTimeout(syncDvh,80);setTimeout(syncDvh,400);});if(window.visualViewport){window.visualViewport.addEventListener('resize',syncDvh);}}catch(e){}try{initTheme();}catch(e){}showScreen('loading');const cache=loadCache();if(cache){state=cache.state;}try{await initSW();}catch(e){}try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{},shopBlocked:[]},shopMode:d.shopMode||null,photoLibrary:d.photoLibrary||[]};lastTs=d.updatedAt;cacheState();setStatus('live');setOffline(false);}catch(e){if(!cache){setStatus('error');renderLogin();showScreen('login');return;}setStatus('offline');setOffline(true);}try{renderLogin();const saved=localStorage.getItem('cfh_member');const ok=saved&&MEMBERS.find(m=>m.name===saved);if(ok){selectMember(saved);}else{showScreen('login');}startPoll();}catch(e){showScreen('login');}try{initPush();}catch(e){}try{checkVersionUpdate();}catch(e){}try{checkInstallPrompt();}catch(e){}window.addEventListener('online',()=>{setOffline(false);setStatus('live');save();});window.addEventListener('offline',()=>{setOffline(true);setStatus('offline');});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}else if(member){try{initPush();}catch(e){}if(!pollTimer)startPoll();(async()=>{try{const d=await fbRead();if(d.updatedAt>lastTs){lastTs=d.updatedAt;state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{},shopBlocked:[]},shopMode:d.shopMode||null,photoLibrary:d.photoLibrary||[]};cacheState();renderContent();renderTabs();}setOffline(false);}catch(e){setOffline(!navigator.onLine);}})();}});}
 init();
 </script>
 </body>
