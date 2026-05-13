@@ -4,7 +4,7 @@
   READ THIS BEFORE MAKING ANY CHANGES
 ================================================================
 
-  CURRENT VERSION: v7.1.2
+  CURRENT VERSION: v7.2.0
   (Auto-synced from `const VER` by .github/workflows/sync-version.yml.
    THIS LINE IS THE SOURCE OF TRUTH FOR THE CURRENT VERSION.
    Do NOT infer the version from the changelog below — it can lag if
@@ -29,30 +29,42 @@
   - fbRead()            — reads all data from Firebase
   - fbWrite(path, data) — writes to Firebase
   - postNote()          — sends a message (keyboard stays up)
-  - bindItemGestures(itemEl) — long-press (220ms) → enters delete-mode
+  - bindItemGestures(itemEl) — pointer-based (works for touch AND mouse).
+                          Long-press (220ms) → enters delete-mode
                           (red border + scale + reveal red bg) AND
                           opens an action menu with [Edit][Delete].
                           From there: drag left past 50% width = commit
                           delete, tap Edit to edit, tap outside to
-                          cancel. Tab swipes pass through when
+                          cancel. Right-click also opens the menu on
+                          desktop. Tab swipes pass through when
                           delete-mode is NOT active.
-  - bindNoteGestures(noteEl) — long-press (300ms) on a message bubble →
-                          opens action menu with [Edit][Reply][Delete]
-                          (Edit/Delete only on own messages, Reply only
-                          for non-poll messages).
+  - bindNoteGestures(noteEl) — pointer-based. Long-press (300ms) on a
+                          message bubble → opens action menu with
+                          [Edit][Reply][Pin/Unpin][Delete] (Edit/Delete
+                          only on own messages, Reply only for non-poll
+                          messages, Pin available on all notes incl.
+                          regular messages). Right-click also opens
+                          the menu.
+  - togglePinNote(nid)  — toggles n.pinned on any note (poll or message).
+                          buildMsgs sorts pinned notes to the top of the
+                          feed. togglePinPoll is kept as a thin alias.
   - editItem(id) / editNote(id) / editPoll(id) — open the edit popup
                           for an item, message, or poll; saves on Enter
-                          or the Save button. editNote uses
-                          showMsgEditPopup so you can add/replace/remove
-                          the photo as well as the text. editPoll uses
+                          or the Save button. editItem uses
+                          showItemEditPopup so you can add/replace/remove
+                          the item's photo as well as rename it.
+                          editNote uses showMsgEditPopup with the same
+                          photo controls for messages. editPoll uses
                           showPollEditPopup and preserves existing votes
                           for any option whose text hasn't changed.
-  - showActionMenu(target,items) / showEditPopup(title,initial,onSave)
-                          / showMsgEditPopup(text,image,onSave)
-                          / showPollEditPopup(poll,onSave)
-                          / showConfirmPopup(msg,onYes) — small popup
+  - showActionMenu(target,items) — long-press / right-click menu. Auto-
+                          fades after 1.75s if untouched (cancelled if
+                          the user hovers or taps the menu). Closes on
+                          tap-outside, scroll, or button click.
+  - showEditPopup / showItemEditPopup / showMsgEditPopup /
+    showPollEditPopup / showConfirmPopup / showShopModeConfirm — popup
                           helpers used for hold-menus, edit dialogs
-                          and the Clear-all confirm.
+                          and the Clear-all / shop-mode-start confirms.
   - addPhoto(itemId)    — for items: opens a plain file input with no
                           `capture` attribute, so iOS / Android show
                           their own combined Camera + Photo Library
@@ -62,11 +74,17 @@
                           upload on decode failure (HEIC, broken MIME,
                           read/load timeout), and posts to the
                           Cloudflare /photo endpoint.
-  - blockSuggestion(i)  — the × on a typed-suggestion chip. Adds the
-                          item key to state.itemHistory.shopBlocked so
-                          it never shows up as a suggestion again.
-                          updateSuggestions also gates by count>=2 so
-                          one-off entries don't surface at all.
+  - hideSuggestion(i)   — the × on a typed-suggestion chip. Adds the
+                          item key to an in-memory _sessionHidden Set,
+                          so the chip is suppressed for the rest of the
+                          session but resurfaces next time the user
+                          re-adds the item. (Legacy state.itemHistory.
+                          shopBlocked is wiped on first boot of v7.2.0
+                          so previously-permanently-blocked items come
+                          back.) updateSuggestions still gates by
+                          count>=2 so one-off entries don't surface.
+                          blockSuggestion(i) kept as a back-compat
+                          alias that just calls hideSuggestion.
   - drafts {shop,todo,msg,notice} — in-memory typed text per tab.
                           captureDraftsForCurrentTab() runs at the
                           start of setTab; restoreDraftsForCurrentTab()
@@ -75,11 +93,19 @@
   - syncDvh() — sets --vh to window.innerHeight on load/resize so the
                           bottom of the screen renders correctly on
                           first paint (workaround for iOS dvh timing).
-  - initTabSwipe()      — doc-level horizontal-swipe handler that
-                          changes tab. Bails while any item is in
-                          delete-mode drag, while filter sheet open,
-                          while transitioning, and inside form
-                          inputs / poll options / popups.
+  - initTabSwipe()      — doc-level pointer-based horizontal-swipe
+                          handler that finger-tracks 1:1 and commits on
+                          release via _completeSwipeTo (or snaps back).
+                          Velocity-aware: a quick flick commits even if
+                          the absolute dx hasn't crossed the 18%-width
+                          threshold. Works for touch AND mouse. Bails
+                          while any item is in delete-mode drag, while
+                          filter sheet open, while transitioning, and
+                          inside form inputs / poll options / popups.
+                          Ctrl/Cmd + ←/→ also switches tabs (keyboard).
+  - bindFilterSheetDrag(sh) — pointer-based drag on the filter sheet:
+                          drag down from the grip (or from the top of
+                          the sheet when at scrollTop 0) to dismiss.
   - initPullRefresh()   — sets up pull-to-refresh (1400ms min)
   - openFilterSheet()   — opens filter/sort bottom sheet
   - selectMember(name)  — logs in as a family member
@@ -92,13 +118,29 @@
   - showUpdatePopup(prev)— fetches page source, extracts changelog for VER
   - showInstallPopup()  — first-open install-to-home-screen guide
   - sendPushNotif(t,b,addedBy) — sends push, excludes sender's devices
-  - startShopMode() / endShopMode() — supermarket-mode toggle: sets
-                          state.shopMode={who,startedAt,lastPing?} (synced
-                          via FB), shows a persistent banner on the
-                          shopping tab, and fires an "<name> is at the
-                          shops!" push that sw.js treats as sticky/high-
-                          attention (detection keys on "at the shops").
-                          Auto-expires after 90 min; shopper can tap End.
+  - startShopMode() / endShopMode() — supermarket-mode toggle. Start
+                          opens showShopModeConfirm (app-styled, no
+                          native confirm()), and on confirm plays
+                          playShopModeEntryAnim (cart-launch + colour
+                          burst) before setting state.shopMode={who,
+                          startedAt,lastPing?} (synced via FB). Shows a
+                          persistent banner on the shopping tab, fires
+                          an "<name> is at the shops!" push that sw.js
+                          treats as sticky/high-attention (detection
+                          keys on "at the shops"). Auto-expires after
+                          90 min; shopper can tap End.
+  - syncShopFab()       — mounts the floating "At the shops" pill,
+                          centred at the bottom of the viewport, in the
+                          logged-in member's colour (CSS vars --fab-c /
+                          --fab-c2 / --fab-shadow).
+  - viewPhoto(src)      — fullscreen photo viewer with finger-tracked
+                          swipe-in-any-direction to dismiss + pinch /
+                          double-tap / wheel zoom (pointer-based, works
+                          on mouse + touch). Esc also closes.
+  - playAppOpenSplash() — quick logo-burst splash on the first app open
+                          per session (gated by sessionStorage so it
+                          only plays once per page-load, not every
+                          render).
   - pingShop()          — shopper-only re-fire of the sticky push
                           ("<name> is still at the shops!"). 2-min
                           cooldown, tracked in state.shopMode.lastPing.
@@ -141,6 +183,27 @@
      button off-screen. Save deep detail for the commit message.
 
   CHANGELOG:
+  v7.2.0 - Big quality-of-life pass — hence the medium bump.
+            (1) Pin any message, not just polls — long-press → Pin/Unpin
+            (and poll pinning actually works now). (2) Long-press menus
+            stay on screen for 1.75s then gracefully fade, so they no
+            longer vanish the moment you lift your finger on a message.
+            (3) Editing an item now lets you add, replace or remove its
+            photo from the same dialog. (4) Photo viewer: swipe in any
+            direction to dismiss, pinch / double-tap / scroll-wheel to
+            zoom. (5) Shop-mode trigger now uses an app-styled confirm
+            popup (no more ugly native dialog), the FAB is centred and
+            takes your member colour, and entering shop-mode plays a
+            cart-launch animation. (6) Quick splash animation on first
+            open each session. (7) Tab swipes are finger-tracked 1:1
+            with velocity-aware commit and a smoother 340ms ease.
+            (8) Filter sheet can be swiped down to close. (9) ×-ing a
+            suggestion only hides it for the session — it'll come back
+            next time you re-add the item, no more permanent block.
+            (10) Full mouse / laptop support via Pointer Events: tab
+            swipes, item long-press, photo zoom and filter-drag all
+            work with a mouse; Ctrl/Cmd + ←/→ switches tabs.
+            (11) Cleaner "What's New" popup with bulleted points.
   v7.1.2 - Five follow-ups to v7.1.1: (1) The inline Pin / Delete-poll
             buttons under poll bubbles are gone. Long-press a poll
             instead — the action menu now has Pin/Unpin (anyone) plus
@@ -747,6 +810,11 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 @keyframes blink{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}60%{box-shadow:0 0 0 6px transparent}}
 @keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:none;opacity:1}}
 @keyframes loadfill{from{width:0}to{width:75%}}
+@keyframes shopCart{0%{transform:translate(-160vw,0) rotate(-18deg);opacity:0}15%{opacity:1}45%{transform:translate(0,0) rotate(0deg);opacity:1}70%{transform:translate(0,-12px) rotate(2deg);opacity:1}100%{transform:translate(160vw,0) rotate(14deg);opacity:0}}
+@keyframes shopBurst{0%{transform:scale(.2);opacity:.9}60%{opacity:.55}100%{transform:scale(2.6);opacity:0}}
+@keyframes splashIn{0%{transform:scale(.5) rotate(-12deg);opacity:0}55%{transform:scale(1.18) rotate(6deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
+@keyframes splashOut{to{transform:scale(.85);opacity:0;filter:blur(6px)}}
+@keyframes splashRing{0%{transform:scale(.4);opacity:.7}100%{transform:scale(2.4);opacity:0}}
 @keyframes ptr-spin{to{transform:rotate(360deg) scale(1)}}
 @keyframes ptr-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 #loading{align-items:center;justify-content:center;flex-direction:column;gap:18px}
@@ -815,7 +883,8 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .fsheet-back.open{opacity:1;pointer-events:auto}
 .fsheet{position:fixed;left:0;right:0;bottom:0;z-index:201;background:var(--surf);border-top-left-radius:20px;border-top-right-radius:20px;padding:10px 16px calc(18px + env(safe-area-inset-bottom));transform:translateY(100%);transition:transform .26s var(--ease);max-height:85vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,.15)}
 .fsheet.open{transform:translateY(0)}
-.fsheet-grip{width:38px;height:4px;background:var(--brd2);border-radius:2px;margin:4px auto 14px}
+.fsheet-grip{width:46px;height:5px;background:var(--brd2);border-radius:3px;margin:6px auto 14px;cursor:grab;touch-action:none}
+.fsheet{touch-action:pan-y}
 .fsheet-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .fsheet-title{font-size:16px;font-weight:800;letter-spacing:-.2px}
 .fsheet-done{background:transparent;border:none;color:var(--text);font-size:15px;font-weight:600;cursor:pointer;padding:4px 2px}
@@ -835,8 +904,11 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .item-bg{position:absolute;inset:0;border-radius:var(--r);background:#ef4444;display:flex;align-items:center;justify-content:flex-end;padding-right:18px;color:#fff;opacity:0;pointer-events:none;transition:opacity .18s ease}
 .item-bg svg{width:18px;height:18px}
 .item-bg.show{opacity:1}
-.item{display:flex;align-items:center;gap:10px;background:var(--surf);border-radius:var(--r);padding:11px 12px;border:1px solid var(--brd);border-left-width:3px;position:relative;z-index:1;will-change:transform;transition:background .3s,border-color .3s;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.item{display:flex;align-items:center;gap:10px;background:var(--surf);border-radius:var(--r);padding:11px 12px;border:1px solid var(--brd);border-left-width:3px;position:relative;z-index:1;will-change:transform;transition:background .3s,border-color .3s;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:pan-y}
+.item.delete-mode{touch-action:none}
 .nwrap,.nbubble,.notice-item{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.nbubble{touch-action:pan-y}
+.content{touch-action:pan-y}
 .item.delete-mode{border-color:#ef4444;box-shadow:0 4px 18px rgba(239,68,68,.22);transform:scale(.98);transition:transform .18s var(--ease),border-color .18s var(--ease),box-shadow .18s var(--ease),background .3s}
 .item.done{opacity:.28}
 .ichk{position:relative;width:22px;height:22px;border-radius:7px;border:1.5px solid;background:transparent;cursor:pointer;flex-shrink:0;padding:0;transition:all .18s var(--spring);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
@@ -919,6 +991,8 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .msg-preview-rm{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.62);color:#fff;width:22px;height:22px;border-radius:50%;border:none;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0}
 .msg-preview-up{padding:14px 18px;font-size:11px;color:var(--sub);font-weight:600}
 .ntext{font-size:14px;font-weight:500;color:var(--text);line-height:1.5;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word}
+.pin-marker{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:800;color:#f59e0b;letter-spacing:1px;margin-bottom:5px;text-transform:uppercase}
+.nbubble.pinned{box-shadow:0 0 0 1.5px #f59e0b66,var(--shadow)}
 .rbar{display:flex;align-items:center;gap:3px;margin-top:5px;flex-wrap:wrap;position:relative}
 .rbtn{display:flex;align-items:center;gap:3px;padding:3px 7px;border-radius:11px;background:var(--surf2);border:1px solid var(--brd);cursor:pointer;font-size:13px;transition:all .14s}
 .rbtn:active{transform:scale(.87)}
@@ -949,8 +1023,15 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .reply-bar-text b{font-weight:800}
 .reply-bar-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0 3px;line-height:1;flex-shrink:0}
 .reply-bar-x:active{color:#ef4444}
-.shop-mode-fab{position:fixed;right:14px;bottom:calc(6px + env(safe-area-inset-bottom));display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 16px 0 13px;border-radius:21px;border:none;cursor:pointer;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-size:13px;font-weight:800;letter-spacing:-.1px;box-shadow:0 8px 22px rgba(14,165,233,.42),0 3px 10px rgba(0,0,0,.18);z-index:150;transition:transform .14s var(--spring),box-shadow .2s,opacity .15s;animation:scaleIn .3s var(--spring) both}
-.shop-mode-fab:active{transform:scale(.94);box-shadow:0 4px 14px rgba(14,165,233,.35)}
+.shop-mode-fab{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);display:inline-flex;align-items:center;gap:7px;height:46px;padding:0 20px 0 17px;border-radius:23px;border:none;cursor:pointer;background:linear-gradient(135deg,var(--fab-c,#0ea5e9),var(--fab-c2,#6366f1));color:#fff;font-size:13.5px;font-weight:800;letter-spacing:-.1px;box-shadow:0 10px 26px var(--fab-shadow,rgba(14,165,233,.42)),0 3px 10px rgba(0,0,0,.18);z-index:150;transition:transform .14s var(--spring),box-shadow .2s,opacity .15s;animation:scaleIn .3s var(--spring) both}
+.shop-mode-fab:active{transform:translateX(-50%) scale(.94);box-shadow:0 4px 14px var(--fab-shadow,rgba(14,165,233,.35))}
+.shop-anim-layer{position:fixed;inset:0;z-index:600;pointer-events:none;display:flex;align-items:center;justify-content:center}
+.shop-anim-cart{position:absolute;animation:shopCart 1.1s cubic-bezier(.34,1.2,.5,1) both;filter:drop-shadow(0 6px 18px rgba(0,0,0,.35))}
+.shop-anim-burst{position:absolute;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,var(--c) 0%,transparent 70%);animation:shopBurst .9s ease-out .15s both}
+.splash-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:var(--bg);pointer-events:none}
+.splash-overlay.fade{animation:splashOut .45s ease both}
+.splash-logo{width:84px;height:84px;border-radius:24px;background:linear-gradient(145deg,#60a5fa,#818cf8);display:flex;align-items:center;justify-content:center;box-shadow:0 14px 40px rgba(96,165,250,.45);animation:splashIn .6s cubic-bezier(.34,1.56,.64,1) both;position:relative}
+.splash-ring{position:absolute;inset:-8px;border-radius:50%;border:3px solid rgba(96,165,250,.6);animation:splashRing .8s ease-out .1s both}
 .shop-mode-fab svg{flex-shrink:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.18))}
 .shop-mode-banner{display:flex;align-items:center;gap:10px;margin:11px 12px 0;padding:11px 13px;border-radius:13px;border:1.5px solid;background:var(--surf);box-shadow:var(--shadow)}
 .shop-mode-icon-big{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:26px;height:26px;border-radius:8px}
@@ -988,9 +1069,11 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .poll-voters{font-size:10px;color:var(--muted);margin-top:4px}
 .photo-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 3px;font-size:15px;flex-shrink:0}
 .item-photo{width:42px;height:42px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:pointer;border:1px solid var(--brd)}
-.photo-modal{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeUp .15s ease both}
-.photo-modal img{max-width:100%;max-height:88vh;border-radius:12px;object-fit:contain}
-.photo-modal-close{position:absolute;top:18px;right:18px;background:rgba(255,255,255,.15);border:none;color:white;font-size:21px;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.photo-modal{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeUp .15s ease both;touch-action:none;overflow:hidden}
+.photo-modal img{max-width:100%;max-height:88vh;border-radius:12px;object-fit:contain;will-change:transform;-webkit-user-select:none;user-select:none;touch-action:none;cursor:grab}
+.photo-modal img:active{cursor:grabbing}
+.photo-modal-close{position:absolute;top:18px;right:18px;background:rgba(255,255,255,.15);border:none;color:white;font-size:21px;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2}
+.photo-hint{position:absolute;top:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.65);font-size:11px;font-weight:600;letter-spacing:.4px;background:rgba(0,0,0,.35);padding:5px 12px;border-radius:99px;pointer-events:none;animation:fadeUp .4s ease both;animation-delay:.05s}
 .notif-bar{margin:10px 12px 0;background:var(--surf2);border:1px solid var(--brd);border-radius:11px;padding:9px 11px;display:flex;align-items:center;gap:8px}
 .notif-bar-txt{font-size:12px;color:var(--sub);font-weight:500;flex:1;min-width:0;line-height:1.4}
 .notif-bar-act{padding:5px 10px;border-radius:8px;background:#60a5fa1a;border:1px solid #60a5fa44;color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0}
@@ -1014,6 +1097,10 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 .app-popup-btn{width:100%;padding:12px;border:none;background:linear-gradient(145deg,#60a5fa,#818cf8);color:white;font-weight:700;font-size:14px;border-radius:12px;cursor:pointer;transition:transform .12s var(--ease),opacity .12s;letter-spacing:.2px}
 .app-popup-btn:active{transform:scale(.96);opacity:.9}
 .app-popup-dismiss{width:100%;padding:9px;margin-top:6px;background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer}
+.app-popup.whatsnew{max-width:340px}
+.whatsnew-list{list-style:none;padding:0;margin:6px 0 16px;display:flex;flex-direction:column;gap:9px;text-align:left;max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.whatsnew-list li{position:relative;padding:10px 12px 10px 32px;font-size:13px;color:var(--text);font-weight:500;line-height:1.45;background:var(--surf2);border:1px solid var(--brd);border-radius:11px}
+.whatsnew-list li::before{content:'';position:absolute;left:12px;top:14px;width:8px;height:8px;border-radius:50%;background:linear-gradient(145deg,#60a5fa,#818cf8);box-shadow:0 1px 4px rgba(96,165,250,.5)}
 .iqty{font-size:10px;font-weight:700;color:var(--sub);background:var(--surf2);border:1px solid var(--brd);border-radius:7px;padding:1px 6px;flex-shrink:0;font-variant-numeric:tabular-nums}
 .qty-step{display:inline-flex;align-items:center;flex-shrink:0;line-height:1;gap:0;margin-left:2px}
 .qty-btn{width:22px;height:22px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:13px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1;border-radius:5px;transition:background .12s,color .12s,transform .1s}
@@ -1064,7 +1151,7 @@ header{border-bottom:1.5px solid var(--brd);padding:calc(11px + env(safe-area-in
 </div>
 <script>
 const FB='https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/cheema.json';
-const VER='v7.1.2';
+const VER='v7.2.0';
 const PUSH_RELAY='https://cfh-push.jivancheemalfc.workers.dev';
 const MEMBERS=[{name:'Mum',initials:'M',color:'#f472b6'},{name:'Dad',initials:'D',color:'#3b82f6'},{name:'Jiv',initials:'J',color:'#f97316'},{name:'Rajan(Midget)',initials:'R',color:'#ef4444'}];
 const URGENCY=[{label:'Low',color:'#22c55e',ring:'#4ade80'},{label:'Medium',color:'#eab308',ring:'#fde047'},{label:'High',color:'#ef4444',ring:'#f87171'}];
@@ -1086,7 +1173,7 @@ let pendingMsgImage=null,pendingMsgUploading=false;
 let undoTimer=null,lastReadNotes=0;
 function syncDvh(){try{const h=(window.visualViewport&&window.visualViewport.height)||window.innerHeight;document.documentElement.style.setProperty('--vh',h+'px');}catch(e){}}
 function nudgeLayout(){try{syncDvh();const c=document.getElementById('content');if(c){const t=c.scrollTop;c.scrollTop=t+1;c.scrollTop=t;}document.body.style.minHeight='calc(100lvh + 0.5px)';requestAnimationFrame(()=>{document.body.style.minHeight='';syncDvh();});}catch(e){}}
-function syncShopFab(){try{const cur=document.getElementById('shop-fab');const show=member&&tabIdx===0&&!shopModeActive();if(show){if(!cur){const btn=document.createElement('button');btn.id='shop-fab';btn.className='shop-mode-fab';btn.title="I'm at the shops";btn.innerHTML=iconSvg('cart',16)+'<span>At the shops</span>';btn.onclick=startShopMode;document.body.appendChild(btn);}}else if(cur){cur.remove();}}catch(e){}}
+function syncShopFab(){try{const cur=document.getElementById('shop-fab');const show=member&&tabIdx===0&&!shopModeActive();if(show){let btn=cur;if(!btn){btn=document.createElement('button');btn.id='shop-fab';btn.className='shop-mode-fab';btn.title="I'm at the shops";btn.innerHTML=iconSvg('cart',16)+'<span>At the shops</span>';btn.onclick=startShopMode;document.body.appendChild(btn);}const m=getMem(member);btn.style.setProperty('--fab-c',m.color);btn.style.setProperty('--fab-c2',m.color);btn.style.setProperty('--fab-shadow',m.color+'66');}else if(cur){cur.remove();}}catch(e){}}
 function initTheme(){syncThemeBtn();}
 function toggleTheme(){haptic([8,40,8]);const d=document.documentElement.classList.toggle('dark');localStorage.setItem('cfh-theme',d?'dark':'light');document.getElementById('tmeta').content=d?'#09090c':'#eef2ff';syncThemeBtn();}
 function syncThemeBtn(){const ic=document.getElementById('theme-icon');if(!ic)return;ic.innerHTML=document.documentElement.classList.contains('dark')?'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>':'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';}
@@ -1100,9 +1187,11 @@ function esc(s){const d=document.createElement('div');d.textContent=s;return d.i
 function haptic(p){try{navigator.vibrate(p||8);}catch(e){}}
 function suggestCat(text){const t=text.toLowerCase();for(const[cat,words]of Object.entries(CAT_HINTS)){if(words.some(w=>t.includes(w)))return cat;}return'other';}
 function _histK(text){return(text||'').toLowerCase().replace(/[.#$\[\]\/]/g,'_');}
-function updateSuggestions(){const inp=document.getElementById('mi'),row=document.getElementById('suggest-row');if(!inp||!row)return;if(tabIdx!==0){_suggestList=[];row.classList.remove('has-suggs');row.innerHTML='';return;}const q=_histK((inp.value||'').trim());if(q.length<2){_suggestList=[];row.classList.remove('has-suggs');row.innerHTML='';return;}const hist=(state.itemHistory&&state.itemHistory.shop)||{};const blocked=new Set((state.itemHistory&&state.itemHistory.shopBlocked)||[]);_suggestList=Object.entries(hist).filter(([k,c])=>k.includes(q)&&k!==q&&(typeof c==='number'?c>=2:false)&&!blocked.has(k)).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>k);if(!_suggestList.length){row.classList.remove('has-suggs');row.innerHTML='';return;}const acc=TABS[tabIdx].accent;const newHTML=_suggestList.map((k,i)=>`<button class="sugg-chip" style="border-color:${acc}55;color:${acc}" onclick="pickSuggestion(${i})"><span>${esc(k)}</span><span class="sugg-chip-x" onclick="event.stopPropagation();blockSuggestion(${i})" title="Don't suggest again">×</span></button>`).join('');if(row.innerHTML!==newHTML)row.innerHTML=newHTML;row.classList.add('has-suggs');}
+const _sessionHidden=new Set();
+function updateSuggestions(){const inp=document.getElementById('mi'),row=document.getElementById('suggest-row');if(!inp||!row)return;if(tabIdx!==0){_suggestList=[];row.classList.remove('has-suggs');row.innerHTML='';return;}const q=_histK((inp.value||'').trim());if(q.length<2){_suggestList=[];row.classList.remove('has-suggs');row.innerHTML='';return;}const hist=(state.itemHistory&&state.itemHistory.shop)||{};_suggestList=Object.entries(hist).filter(([k,c])=>k.includes(q)&&k!==q&&(typeof c==='number'?c>=2:false)&&!_sessionHidden.has(k)).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>k);if(!_suggestList.length){row.classList.remove('has-suggs');row.innerHTML='';return;}const acc=TABS[tabIdx].accent;const newHTML=_suggestList.map((k,i)=>`<button class="sugg-chip" style="border-color:${acc}55;color:${acc}" onclick="pickSuggestion(${i})"><span>${esc(k)}</span><span class="sugg-chip-x" onclick="event.stopPropagation();hideSuggestion(${i})" title="Hide for now">×</span></button>`).join('');if(row.innerHTML!==newHTML)row.innerHTML=newHTML;row.classList.add('has-suggs');}
 function pickSuggestion(i){const text=_suggestList[i];if(text==null)return;const inp=document.getElementById('mi');if(!inp)return;inp.value=text;inp.focus();const row=document.getElementById('suggest-row');if(row){row.classList.remove('has-suggs');row.innerHTML='';}haptic(6);}
-function blockSuggestion(i){const k=_suggestList[i];if(!k)return;state.itemHistory=state.itemHistory||{shop:{},todo:{}};const cur=state.itemHistory.shopBlocked||[];if(!cur.includes(k))state.itemHistory.shopBlocked=[...cur,k];haptic([10,30,10]);_suggestList.splice(i,1);updateSuggestions();save();}
+function hideSuggestion(i){const k=_suggestList[i];if(!k)return;_sessionHidden.add(k);haptic(6);_suggestList.splice(i,1);updateSuggestions();}
+function blockSuggestion(i){return hideSuggestion(i);}
 function cacheState(){try{localStorage.setItem('cfh-cache',JSON.stringify({state,ts:Date.now()}));}catch(e){}}
 function loadCache(){try{const c=JSON.parse(localStorage.getItem('cfh-cache')||'null');if(c&&c.state)return c;}catch(e){}return null;}
 function setOffline(v){document.body.classList.toggle('offline',v);}
@@ -1174,7 +1263,7 @@ async function setTab(i){
   renderContent();
   c.scrollTop=0;
   const SLIDE_EASE='cubic-bezier(.22,1,.36,1)';
-  const SLIDE_MS=220;
+  const SLIDE_MS=300;
   c.style.transition='none';
   c.style.transform=`translate3d(${dir*100}%,0,0) scale(.94)`;
   c.style.opacity='0.4';
@@ -1223,15 +1312,33 @@ function showActionMenu(targetEl,items){
   let top=rect.top-mh-8;
   if(top<70)top=Math.min(rect.bottom+6,window.innerHeight-mh-margin);
   m.style.left=left+'px';m.style.top=top+'px';m.style.visibility='';
+  // Auto-fade after 1.75s — gives the user enough time to read + tap, then
+  // gracefully dismisses without leaving the menu stranded. Hovering or
+  // touching the menu cancels the fade so a careful reader can keep it open.
+  let fadeTimer=null,removeTimer=null;
+  const cancelFade=()=>{if(fadeTimer){clearTimeout(fadeTimer);fadeTimer=null;}if(removeTimer){clearTimeout(removeTimer);removeTimer=null;}m.style.transition='';m.style.opacity='';};
+  const armFade=()=>{
+    if(fadeTimer)clearTimeout(fadeTimer);
+    fadeTimer=setTimeout(()=>{
+      if(!m.parentNode)return;
+      m.style.transition='opacity .45s ease,transform .45s ease';
+      m.style.opacity='0';m.style.transform='translateY(4px)';
+      removeTimer=setTimeout(()=>{if(m.parentNode)m.remove();},480);
+    },1750);
+  };
+  armFade();
+  m.addEventListener('pointerenter',cancelFade);
+  m.addEventListener('pointermove',cancelFade);
+  m.addEventListener('touchstart',cancelFade,{passive:true});
   m.querySelectorAll('button').forEach((b,i)=>{
-    b.addEventListener('click',ev=>{ev.stopPropagation();if(!m.parentNode)return;m.remove();items[i].fn();});
+    b.addEventListener('click',ev=>{ev.stopPropagation();cancelFade();if(!m.parentNode)return;m.remove();items[i].fn();});
   });
   setTimeout(()=>{
-    const dismiss=e=>{if(m.contains(e.target))return;m.remove();document.removeEventListener('touchstart',dismiss,true);document.removeEventListener('click',dismiss,true);document.removeEventListener('scroll',dismiss,true);};
-    document.addEventListener('touchstart',dismiss,{capture:true,passive:true});
+    const dismiss=e=>{if(m.contains(e.target))return;cancelFade();if(m.parentNode)m.remove();document.removeEventListener('pointerdown',dismiss,true);document.removeEventListener('click',dismiss,true);};
+    document.addEventListener('pointerdown',dismiss,{capture:true});
     document.addEventListener('click',dismiss,{capture:true});
-    const cnt=document.getElementById('content');if(cnt)cnt.addEventListener('scroll',dismiss,{once:true,passive:true});
-  },60);
+    const cnt=document.getElementById('content');if(cnt)cnt.addEventListener('scroll',()=>{cancelFade();if(m.parentNode)m.remove();},{once:true,passive:true});
+  },120);
   return m;
 }
 function showEditPopup(title,initial,onSave){
@@ -1267,11 +1374,46 @@ function editItem(id){
   const k=tabIdx===0?'shop':'todo';
   const it=state[k].find(i=>i.id===id);
   if(!it)return;
-  showEditPopup('Edit '+(tabIdx===0?'item':'task'),it.text,newText=>{
-    if(!newText||newText===it.text)return;
-    state[k]=state[k].map(i=>i.id===id?{...i,text:newText,cat:tabIdx===0?suggestCat(newText):i.cat}:i);
+  showItemEditPopup(it.text,it.photo||'',(newText,newPhoto)=>{
+    const sameText=!newText||newText===it.text;
+    const samePhoto=(newPhoto||'')===(it.photo||'');
+    if(sameText&&samePhoto)return;
+    state[k]=state[k].map(i=>{
+      if(i.id!==id)return i;
+      const next={...i};
+      if(newText&&newText!==i.text){next.text=newText;if(tabIdx===0)next.cat=suggestCat(newText);}
+      if(newPhoto)next.photo=newPhoto;else delete next.photo;
+      return next;
+    });
     haptic(8);renderContent();save();
   });
+}
+function showItemEditPopup(initialText,initialPhoto,onSave){
+  if(document.querySelector('.app-popup-back'))return;
+  let curPhoto=initialPhoto||'';
+  const isShop=tabIdx===0;
+  const back=document.createElement('div');back.className='app-popup-back';
+  back.innerHTML=`<div class="app-popup" style="text-align:left;max-width:340px"><div class="app-popup-title" style="text-align:left;margin-bottom:12px">Edit ${isShop?'item':'task'}</div><textarea class="edit-input" rows="2" placeholder="${isShop?'Item':'Task'} name…"></textarea><div id="item-edit-img" style="margin-bottom:10px"></div><div style="display:flex;gap:8px;margin-bottom:12px"><button id="item-edit-add" style="flex:1;padding:10px 8px;border-radius:11px;border:1px solid var(--brd);background:var(--surf2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px"></button><button id="item-edit-rm" style="flex:1;padding:10px 8px;border-radius:11px;border:1px solid #ef444466;background:transparent;color:#ef4444;font-size:12px;font-weight:700;cursor:pointer;display:none">Remove photo</button></div><div style="display:flex;gap:8px"><button class="app-popup-dismiss" style="flex:1;margin-top:0;background:var(--surf2);border:1px solid var(--brd);border-radius:11px;color:var(--sub);padding:11px 0;font-weight:700" data-cancel>Cancel</button><button class="app-popup-btn" style="flex:1" data-save>Save</button></div></div>`;
+  document.body.appendChild(back);
+  const ta=back.querySelector('textarea');ta.value=initialText||'';
+  const imgArea=back.querySelector('#item-edit-img');
+  const addBtn=back.querySelector('#item-edit-add');
+  const rmBtn=back.querySelector('#item-edit-rm');
+  function refresh(){
+    if(curPhoto){imgArea.innerHTML=`<div class="msg-preview" style="margin:0"><img src="${esc(curPhoto)}"></div>`;rmBtn.style.display='';addBtn.innerHTML=`${iconSvg('camera',14)}<span>Replace photo</span>`;}
+    else{imgArea.innerHTML='';rmBtn.style.display='none';addBtn.innerHTML=`${iconSvg('camera',14)}<span>Add photo</span>`;}
+  }
+  refresh();
+  rmBtn.onclick=()=>{curPhoto='';refresh();};
+  addBtn.onclick=()=>{_pickMsgPhotoForEdit(url=>{curPhoto=url;refresh();});};
+  requestAnimationFrame(()=>back.classList.add('open'));
+  setTimeout(()=>{ta.focus();const v=ta.value;ta.setSelectionRange(v.length,v.length);},80);
+  const close=()=>back.remove();
+  back.querySelector('[data-cancel]').onclick=close;
+  const doSave=()=>{const v=ta.value.trim();back.remove();onSave(v,curPhoto||null);};
+  back.querySelector('[data-save]').onclick=doSave;
+  ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSave();}});
+  back.addEventListener('click',e=>{if(e.target===back)close();});
 }
 function editNote(id){
   const n=state.notes.find(x=>x.id===id);
@@ -1397,11 +1539,11 @@ function showMsgEditPopup(initialText,initialImage,onSave){
 function bindNoteGestures(noteEl){
   if(!noteEl||noteEl._gb)return;noteEl._gb=true;
   const id=noteEl.dataset.noteid;if(!id)return;
-  const HOLD_MS=300;const MOVE_TOL=10;
-  let pressTimer=null,sx=0,sy=0,didLong=false;
+  const HOLD_MS=300,MOVE_TOL=10;
+  let pressTimer=null,sx=0,sy=0,didLong=false,pid=null;
   function arm(e){
-    didLong=false;
-    const t=e.touches[0];sx=t.clientX;sy=t.clientY;
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    didLong=false;pid=e.pointerId;sx=e.clientX;sy=e.clientY;
     if(pressTimer)clearTimeout(pressTimer);
     pressTimer=setTimeout(()=>{
       pressTimer=null;didLong=true;
@@ -1410,7 +1552,7 @@ function bindNoteGestures(noteEl){
       const items=[];
       if(isMine)items.push({label:'Edit',fn:()=>isPoll?editPoll(id):editNote(id)});
       if(!isPoll)items.push({label:'Reply',fn:()=>startReply(id)});
-      if(isPoll)items.push({label:n.pinned?'Unpin':'Pin',fn:()=>togglePinPoll(id)});
+      items.push({label:n.pinned?'Unpin':'Pin',fn:()=>togglePinNote(id)});
       if(isMine)items.push({label:'Delete',danger:true,fn:()=>delNote(id)});
       if(!items.length)return;
       haptic([12,30,12]);
@@ -1418,13 +1560,24 @@ function bindNoteGestures(noteEl){
       showActionMenu(target,items);
     },HOLD_MS);
   }
-  function cancel(){if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}}
-  noteEl.addEventListener('touchstart',arm,{passive:true});
-  noteEl.addEventListener('touchmove',e=>{if(!pressTimer)return;const t=e.touches[0];if(Math.abs(t.clientX-sx)>MOVE_TOL||Math.abs(t.clientY-sy)>MOVE_TOL)cancel();},{passive:true});
-  noteEl.addEventListener('touchend',e=>{cancel();if(didLong){try{e.preventDefault();}catch(_){}}});
-  noteEl.addEventListener('touchcancel',cancel);
-  // Eat the synthetic click that follows a long-press, so opening the menu on
-  // a poll option doesn't ALSO register a vote on that option.
+  function cancel(){if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}pid=null;}
+  noteEl.addEventListener('pointerdown',arm);
+  noteEl.addEventListener('pointermove',e=>{if(!pressTimer||pid!==e.pointerId)return;if(Math.abs(e.clientX-sx)>MOVE_TOL||Math.abs(e.clientY-sy)>MOVE_TOL)cancel();});
+  noteEl.addEventListener('pointerup',e=>{cancel();});
+  noteEl.addEventListener('pointercancel',cancel);
+  noteEl.addEventListener('pointerleave',cancel);
+  // Right-click on desktop opens the same menu
+  noteEl.addEventListener('contextmenu',e=>{
+    e.preventDefault();
+    const n=state.notes.find(x=>x.id===id);if(!n)return;
+    const isMine=n.author===member,isPoll=n.type==='poll';
+    const items=[];
+    if(isMine)items.push({label:'Edit',fn:()=>isPoll?editPoll(id):editNote(id)});
+    if(!isPoll)items.push({label:'Reply',fn:()=>startReply(id)});
+    items.push({label:n.pinned?'Unpin':'Pin',fn:()=>togglePinNote(id)});
+    if(isMine)items.push({label:'Delete',danger:true,fn:()=>delNote(id)});
+    showActionMenu(noteEl.querySelector('.nbubble')||noteEl,items);
+  });
   noteEl.addEventListener('click',e=>{if(didLong){e.stopPropagation();e.preventDefault();didLong=false;}},true);
 }
 function bindItemGestures(itemEl){
@@ -1433,7 +1586,7 @@ function bindItemGestures(itemEl){
   const bg=wrap&&wrap.querySelector('.item-bg');
   const id=itemEl.dataset.id;
   const LONG_MS=220,COMMIT_FRAC=0.5,LOCK=8;
-  let pressTimer=null,sx=0,sy=0,cx=0,locked=null,deleteMode=false,gone=false;
+  let pressTimer=null,sx=0,sy=0,cx=0,locked=null,deleteMode=false,gone=false,pid=null;
   function enterDelete(){
     if(deleteMode||gone)return;
     deleteMode=true;_itemActiveDrag=true;
@@ -1471,18 +1624,18 @@ function bindItemGestures(itemEl){
       setTimeout(()=>{delItem(id);},320);
     },240);
   }
-  itemEl.addEventListener('touchstart',e=>{
+  itemEl.addEventListener('pointerdown',e=>{
     if(gone)return;
-    const t=e.touches[0];
-    sx=t.clientX;sy=t.clientY;cx=0;locked=null;
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    pid=e.pointerId;
+    sx=e.clientX;sy=e.clientY;cx=0;locked=null;
     if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}
     if(deleteMode){itemEl.style.transition='none';return;}
     pressTimer=setTimeout(()=>{pressTimer=null;if(locked!=='v')enterDelete();},LONG_MS);
-  },{passive:true});
-  itemEl.addEventListener('touchmove',e=>{
-    if(gone)return;
-    const t=e.touches[0];
-    const dx=t.clientX-sx,dy=t.clientY-sy;
+  });
+  itemEl.addEventListener('pointermove',e=>{
+    if(gone||pid!==e.pointerId)return;
+    const dx=e.clientX-sx,dy=e.clientY-sy;
     const adx=Math.abs(dx),ady=Math.abs(dy);
     if(locked===null&&(adx>LOCK||ady>LOCK))locked=adx>ady?'h':'v';
     if(!deleteMode){
@@ -1490,31 +1643,34 @@ function bindItemGestures(itemEl){
       return;
     }
     if(ady>adx*1.4&&ady>14){snapBack();return;}
-    e.preventDefault();
+    if(e.cancelable){try{e.preventDefault();}catch(_){}}
     cx=Math.max(Math.min(dx,0),-wrap.offsetWidth*0.95);
     itemEl.style.transition='none';
     itemEl.style.transform=`translate3d(${cx}px,0,0) scale(.98)`;
     if(bg){const p=Math.min(Math.abs(cx)/(wrap.offsetWidth*COMMIT_FRAC),1);bg.style.opacity=String(0.55+p*0.45);}
-  },{passive:false});
-  itemEl.addEventListener('touchend',()=>{
-    if(gone)return;
+  });
+  itemEl.addEventListener('pointerup',e=>{
+    if(gone||pid!==e.pointerId)return;
+    pid=null;
     if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}
     if(!deleteMode)return;
     if(bg)bg.style.opacity='';
     if(cx<=-wrap.offsetWidth*COMMIT_FRAC)commit();else snapBack();
   });
-  itemEl.addEventListener('touchcancel',()=>{
-    if(gone)return;
+  itemEl.addEventListener('pointercancel',e=>{
+    if(gone)return;pid=null;
     if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}
     if(deleteMode){if(bg)bg.style.opacity='';snapBack();}
   });
+  itemEl.addEventListener('contextmenu',e=>{e.preventDefault();if(!deleteMode)enterDelete();});
 }
 function initOutsideDeleteCancel(){
   if(document._odc)return;document._odc=true;
-  document.addEventListener('touchstart',e=>{
+  document.addEventListener('pointerdown',e=>{
     const cur=document.querySelector('.item.delete-mode');
     if(!cur)return;
     if(e.target.closest('.item.delete-mode')===cur)return;
+    if(e.target.closest('.action-menu'))return;
     cur.classList.remove('delete-mode');
     cur.style.transition='transform .25s cubic-bezier(.34,1.2,.64,1)';
     cur.style.transform='';
@@ -1525,40 +1681,118 @@ function initOutsideDeleteCancel(){
     setTimeout(()=>{cur.style.transition='';},270);
   },{passive:true,capture:true});
 }
+function _completeSwipeTo(dir,startDx){
+  const targetIdx=tabIdx+dir;
+  const c=document.getElementById('content');
+  if(!c)return;
+  if(targetIdx<0||targetIdx>=TABS.length){
+    c.style.transition='transform .28s cubic-bezier(.22,1,.36,1),opacity .25s ease';
+    c.style.transform='';c.style.opacity='';
+    setTimeout(()=>{c.style.transition='';},290);
+    return;
+  }
+  if(transitioning&&_slideCleanup)_slideCleanup();
+  transitioning=true;
+  captureDraftsForCurrentTab();
+  const oldHtml=c.innerHTML,oldScroll=c.scrollTop;
+  const w=window.innerWidth;
+  const ghost=document.createElement('div');
+  ghost.className='tab-ghost';
+  ghost.innerHTML=oldHtml;ghost.scrollTop=oldScroll;
+  ghost.style.transition='none';
+  ghost.style.transform=`translate3d(${startDx}px,0,0)`;
+  c.parentNode.insertBefore(ghost,c.nextSibling);
+  tabIdx=targetIdx;
+  if(targetIdx===2){lastReadNotes=Date.now();try{localStorage.setItem('cfh_read_'+member,lastReadNotes);}catch(e){}}
+  renderTabs();renderContent();
+  c.scrollTop=0;
+  c.style.transition='none';
+  c.style.transform=`translate3d(${dir*w+startDx}px,0,0)`;
+  c.style.opacity='1';
+  void c.offsetHeight;
+  const MS=340,EASE='cubic-bezier(.22,1,.36,1)';
+  c.style.transition=`transform ${MS}ms ${EASE}`;
+  ghost.style.transition=`transform ${MS}ms ${EASE},opacity ${MS}ms ease`;
+  c.style.transform='translate3d(0,0,0)';
+  ghost.style.transform=`translate3d(${-dir*w}px,0,0)`;
+  haptic(6);
+  _slideCleanup=()=>{
+    if(_slideTimer){clearTimeout(_slideTimer);_slideTimer=null;}
+    if(ghost.parentNode)ghost.remove();
+    c.style.transition='';c.style.transform='';c.style.opacity='';c.style.transformOrigin='';
+    transitioning=false;_slideCleanup=null;
+  };
+  _slideTimer=setTimeout(()=>{if(_slideCleanup)_slideCleanup();},MS+20);
+}
 function initTabSwipe(){
   if(document._tsb)return;document._tsb=true;
-  const EDGE_PX=28,LOCK=8,IGNORE='.input-card,.urg-row,.msg-compose,.poll-option,.poll-compose,.fsheet,.app-popup-back,.photo-modal,.shop-mode-additions,.shop-mode-banner,.shop-mode-fab,textarea,input,select';
-  let sx=0,sy=0,active=false,decided=false,fromEdge=false;
-  document.addEventListener('touchstart',e=>{
-    active=false;decided=false;fromEdge=false;
+  const EDGE_PX=28,LOCK=7;
+  // Block swipes inside controls — but allow them over plain content, items, message bubbles.
+  const IGNORE='.input-card,.urg-row,.msg-compose,.poll-option,.poll-compose,.fsheet,.app-popup-back,.photo-modal,.shop-mode-additions,.shop-mode-banner,.shop-mode-fab,.action-menu,.epicker,textarea,input,select,.qty-btn,.iurg,.ichk,.rbtn,.radd,.eopt';
+  let sx=0,sy=0,active=false,locked=null,fromEdge=false,dragging=false,startedAt=0,lastDx=0,lastT=0,vel=0,pid=null;
+  function content(){return document.getElementById('content');}
+  function cleanup(snapBack){
+    const c=content();if(!c)return;
+    if(snapBack){
+      c.style.transition='transform .28s cubic-bezier(.22,1,.36,1),opacity .25s ease';
+      c.style.transform='';c.style.opacity='';
+      setTimeout(()=>{c.style.transition='';},290);
+    }
+    dragging=false;active=false;locked=null;pid=null;
+  }
+  document.addEventListener('pointerdown',e=>{
+    active=false;locked=null;fromEdge=false;dragging=false;
+    if(e.pointerType==='mouse'&&e.button!==0)return;
     const app=document.getElementById('app');
     if(!app||!app.classList.contains('active'))return;
     if(filterSheetOpen||transitioning||_itemActiveDrag)return;
-    const t=e.touches[0];
-    sx=t.clientX;sy=t.clientY;
+    if(e.target.closest&&e.target.closest('.action-menu'))return;
+    sx=e.clientX;sy=e.clientY;
     fromEdge=(sx<EDGE_PX)||(sx>window.innerWidth-EDGE_PX);
-    if(!fromEdge&&e.target.closest(IGNORE))return;
-    active=true;
-  },{passive:true});
-  document.addEventListener('touchmove',e=>{
-    if(!active)return;
-    if(_itemActiveDrag){active=false;return;}
-    const t=e.touches[0],dx=t.clientX-sx,dy=t.clientY-sy;
-    if(!decided&&(Math.abs(dx)>LOCK||Math.abs(dy)>LOCK)){
-      decided=true;
+    if(!fromEdge&&e.target.closest&&e.target.closest(IGNORE))return;
+    active=true;pid=e.pointerId;
+    startedAt=Date.now();lastDx=0;lastT=startedAt;vel=0;
+  },true);
+  document.addEventListener('pointermove',e=>{
+    if(!active||pid!==e.pointerId)return;
+    if(_itemActiveDrag){cleanup(false);return;}
+    const dx=e.clientX-sx,dy=e.clientY-sy;
+    if(locked===null&&(Math.abs(dx)>LOCK||Math.abs(dy)>LOCK)){
       const tol=fromEdge?1.05:0.85;
-      if(Math.abs(dy)>Math.abs(dx)*tol)active=false;
+      if(Math.abs(dy)>Math.abs(dx)*tol){active=false;return;}
+      locked='h';
     }
-  },{passive:true});
-  document.addEventListener('touchend',e=>{
-    if(!active)return;active=false;
-    if(_itemActiveDrag||transitioning)return;
-    const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;
-    const minDx=fromEdge?40:60;
-    if(Math.abs(dx)<minDx||Math.abs(dy)>Math.abs(dx)*0.65)return;
-    if(dx<0&&tabIdx<TABS.length-1)setTab(tabIdx+1);
-    else if(dx>0&&tabIdx>0)setTab(tabIdx-1);
-  },{passive:true});
+    if(locked!=='h')return;
+    const atLeft=tabIdx===0,atRight=tabIdx===TABS.length-1;
+    let off=dx;
+    if((off>0&&atLeft)||(off<0&&atRight))off=Math.sign(off)*Math.pow(Math.abs(off),0.78);
+    dragging=true;
+    const c=content();if(!c)return;
+    c.style.transition='none';
+    c.style.transform=`translate3d(${off}px,0,0)`;
+    const now=Date.now(),dt=Math.max(8,now-lastT);
+    vel=(off-lastDx)/dt; // px/ms
+    lastDx=off;lastT=now;
+    if(e.cancelable){try{e.preventDefault();}catch(_){}}
+  },{passive:false,capture:true});
+  function onUp(e){
+    if(!active||(e.pointerId!=null&&pid!==e.pointerId))return;
+    const wasDragging=dragging;
+    if(!wasDragging){cleanup(false);return;}
+    const dx=e.clientX-sx;
+    const w=window.innerWidth;
+    const threshold=Math.min(70,w*0.18);
+    // Velocity-aware: a quick flick should commit even if dx is short.
+    const flick=Math.abs(vel)>0.45;
+    const goNext=(dx<-threshold||(flick&&vel<0))&&tabIdx<TABS.length-1;
+    const goPrev=(dx>threshold||(flick&&vel>0))&&tabIdx>0;
+    active=false;locked=null;pid=null;dragging=false;
+    if(goNext)_completeSwipeTo(1,dx);
+    else if(goPrev)_completeSwipeTo(-1,dx);
+    else cleanup(true);
+  }
+  document.addEventListener('pointerup',onUp,true);
+  document.addEventListener('pointercancel',e=>{if(active&&dragging)cleanup(true);else{active=false;locked=null;pid=null;}},true);
 }
 function initPullRefresh(){
   const c=document.getElementById('content');
@@ -1661,7 +1895,7 @@ function initPullRefresh(){
     setTimeout(()=>{c.style.transition='';c.style.transform='';bar.style.transition='none';setPct(0);ptrRefreshing=false;},550);
   },{passive:true});
 }
-function buildMsgs(){const acc=TABS[2].accent,me=getMem(member);const notices=state.notices||[];const noticeBlock=!notices.length&&!showNoticeCompose?'':(notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span><button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span>${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}</div>${showNoticeCompose?noticeCompose():''}</div>`);const feed=state.notes.length===0?`<div class="empty"><div class="empty-icon">${iconSvg('notes',24)}</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`:[...state.notes].sort((a,b)=>((b.type==='poll'&&b.pinned)?1:0)-((a.type==='poll'&&a.pinned)?1:0)).map(n=>{const auth=getMem(n.author),isMe=n.author===member;if(n.type==='poll')return renderPollBubble(n,auth,isMe);const rx=n.reactions||{};const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');const rxbarHTML=`<div class="rbar" id="rb${n.id}">${rxH}<button class="radd" onclick="showPicker(event,'${n.id}')">+</button></div>`;const bottomHTML=`<div class="nbottom-end">${rxbarHTML}</div>`;const imgHTML=n.image?`<img class="nimg" src="${esc(n.image)}" onclick="viewPhoto('${esc(n.image)}')">`:'';const textHTML=n.text?`<div class="ntext">${esc(n.text)}</div>`:'';const replyTo=n.replyTo;const rt=replyTo?`<div class="nreplyto" onclick="scrollToNote('${esc(replyTo.id)}')"><span class="nreplyto-author" style="color:${getMem(replyTo.author).color}">${esc(replyTo.author)}</span><span class="nreplyto-text">${replyTo.hasImage?`<span class="nreplyto-img">${iconSvg('image',10)}</span>`:''}${esc(replyTo.text||(replyTo.hasImage?'(image)':'(message)'))}</span></div>`:'';const bubbleHTML=`<div class="nbubble ${isMe?'mine':'theirs'}${n.image&&!n.text&&!rt?' img-only':''}" style="background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}">${rt}${imgHTML}${textHTML}</div>`;const bodyHTML=isMe?`<div class="nbubble-col">${bubbleHTML}${bottomHTML}</div>`:`${bubbleHTML}${bottomHTML}`;return`<div class="nwrap ${isMe?'mine':'theirs'}" data-noteid="${n.id}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div>${bodyHTML}</div>`;}).join('');const previewHTML=pendingMsgImage?`<div class="msg-preview"><img id="msg-preview-img" src="${esc(pendingMsgImage)}"><button class="msg-preview-rm" onclick="cancelMsgImage()" title="Remove">×</button></div>`:(pendingMsgUploading?`<div class="msg-preview"><div class="msg-preview-up">Uploading…</div></div>`:'');const replyBarHTML=replyingTo?`<div class="reply-bar"><span class="reply-bar-icon">${iconSvg('reply',13)}</span><span class="reply-bar-text">Replying to <b style="color:${getMem(replyingTo.author).color}">${esc(replyingTo.author)}</b>: ${replyingTo.hasImage&&!replyingTo.text?`${iconSvg('image',11)} image`:esc((replyingTo.text||'').slice(0,80))}</span><button class="reply-bar-x" onclick="cancelReply()" title="Cancel reply">×</button></div>`:'';const composeSection=showNoticeCompose&&!notices.length?'':`<div class="msg-compose" style="border-top-color:${acc}">${replyBarHTML}<textarea class="msg-ta" id="ni" placeholder="Message the family…" style="caret-color:${acc}"></textarea>${previewHTML}<div class="msg-ft"><div class="msg-actions"><button class="msg-tool-btn" onclick="attachMsgImage()" title="Attach image / GIF">${iconSvg('image',14)}</button><button class="msg-tool-btn" onclick="showPollCompose=!showPollCompose;renderContent()" title="Create poll">${iconSvg('poll',14)}</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div></div></div>${showPollCompose?buildPollCompose():''}`;return`${notifBar()}${shopModeActive()?renderShopModeUI():''}${noticeBlock}${composeSection}<div class="msg-feed">${feed}</div><div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;}
+function buildMsgs(){const acc=TABS[2].accent,me=getMem(member);const notices=state.notices||[];const noticeBlock=!notices.length&&!showNoticeCompose?'':(notices.length>0?`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span><button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button></div>${notices.map(n=>{const m=getMem(n.author);return`<div class="notice-item"><div class="notice-text">${esc(n.text)}</div><div class="notice-meta"><span class="notice-author" style="color:${m.color}">${esc(n.author)}</span>${n.author===member?`<button class="notice-unpin" onclick="unpinNotice('${n.id}')">Unpin</button>`:''}</div></div>`;}).join('')}</div>`:`<div class="notice-wrap"><div class="notice-hdr"><span class="notice-hdr-lbl">Notice Board</span>${!showNoticeCompose?`<button class="notice-add-btn" onclick="showNoticeCompose=true;renderContent()">+ Add</button>`:''}</div>${showNoticeCompose?noticeCompose():''}</div>`);const feed=state.notes.length===0?`<div class="empty"><div class="empty-icon">${iconSvg('notes',24)}</div><div class="empty-title">No messages yet</div><div class="empty-sub">Send the first one above</div></div>`:[...state.notes].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)).map(n=>{const auth=getMem(n.author),isMe=n.author===member;if(n.type==='poll')return renderPollBubble(n,auth,isMe);const rx=n.reactions||{};const rxH=EMOJIS.map(e=>{const who=rx[e]||[];if(!who.length)return'';const mine=who.includes(member);return`<button class="rbtn${mine?' active':''}" onclick="toggleRx('${n.id}','${e}')" style="${mine?`color:${auth.color};border-color:${auth.color}55;background:${auth.color}18`:''}">${e}<span class="rcnt">${who.length}</span></button>`;}).join('');const rxbarHTML=`<div class="rbar" id="rb${n.id}">${rxH}<button class="radd" onclick="showPicker(event,'${n.id}')">+</button></div>`;const bottomHTML=`<div class="nbottom-end">${rxbarHTML}</div>`;const imgHTML=n.image?`<img class="nimg" src="${esc(n.image)}" onclick="viewPhoto('${esc(n.image)}')">`:'';const textHTML=n.text?`<div class="ntext">${esc(n.text)}</div>`:'';const replyTo=n.replyTo;const rt=replyTo?`<div class="nreplyto" onclick="scrollToNote('${esc(replyTo.id)}')"><span class="nreplyto-author" style="color:${getMem(replyTo.author).color}">${esc(replyTo.author)}</span><span class="nreplyto-text">${replyTo.hasImage?`<span class="nreplyto-img">${iconSvg('image',10)}</span>`:''}${esc(replyTo.text||(replyTo.hasImage?'(image)':'(message)'))}</span></div>`:'';const pinHTML=n.pinned?`<div class="pin-marker">${iconSvg('pin',9)}PINNED</div>`:'';const bubbleHTML=`<div class="nbubble ${isMe?'mine':'theirs'}${n.image&&!n.text&&!rt?' img-only':''}${n.pinned?' pinned':''}" style="background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}">${pinHTML}${rt}${imgHTML}${textHTML}</div>`;const bodyHTML=isMe?`<div class="nbubble-col">${bubbleHTML}${bottomHTML}</div>`:`${bubbleHTML}${bottomHTML}`;return`<div class="nwrap ${isMe?'mine':'theirs'}" data-noteid="${n.id}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div>${bodyHTML}</div>`;}).join('');const previewHTML=pendingMsgImage?`<div class="msg-preview"><img id="msg-preview-img" src="${esc(pendingMsgImage)}"><button class="msg-preview-rm" onclick="cancelMsgImage()" title="Remove">×</button></div>`:(pendingMsgUploading?`<div class="msg-preview"><div class="msg-preview-up">Uploading…</div></div>`:'');const replyBarHTML=replyingTo?`<div class="reply-bar"><span class="reply-bar-icon">${iconSvg('reply',13)}</span><span class="reply-bar-text">Replying to <b style="color:${getMem(replyingTo.author).color}">${esc(replyingTo.author)}</b>: ${replyingTo.hasImage&&!replyingTo.text?`${iconSvg('image',11)} image`:esc((replyingTo.text||'').slice(0,80))}</span><button class="reply-bar-x" onclick="cancelReply()" title="Cancel reply">×</button></div>`:'';const composeSection=showNoticeCompose&&!notices.length?'':`<div class="msg-compose" style="border-top-color:${acc}">${replyBarHTML}<textarea class="msg-ta" id="ni" placeholder="Message the family…" style="caret-color:${acc}"></textarea>${previewHTML}<div class="msg-ft"><div class="msg-actions"><button class="msg-tool-btn" onclick="attachMsgImage()" title="Attach image / GIF">${iconSvg('image',14)}</button><button class="msg-tool-btn" onclick="showPollCompose=!showPollCompose;renderContent()" title="Create poll">${iconSvg('poll',14)}</button><button class="post-btn" id="pb" style="background:${acc}">Send</button></div></div></div>${showPollCompose?buildPollCompose():''}`;return`${notifBar()}${shopModeActive()?renderShopModeUI():''}${noticeBlock}${composeSection}<div class="msg-feed">${feed}</div><div class="footer"><div class="fdot"></div><span class="ftxt">Family Hub</span><span class="fver">${VER}</span></div>`;}
 function bindMsgEv(){const b=document.getElementById('pb'),i=document.getElementById('ni');if(b)b.onclick=postNote;if(i){i.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();postNote();}});i.addEventListener('paste',handleMsgPaste);}initTabSwipe();initOutsideDeleteCancel();initPullRefresh();}
 function noticeCompose(){return`<div class="notice-compose"><textarea id="notice-ta" placeholder="Write a notice…" rows="2" style="caret-color:#f59e0b"></textarea><div class="notice-compose-ft"><button onclick="showNoticeCompose=false;renderContent()" style="background:var(--surf2);border:1px solid var(--brd);color:var(--sub)">Cancel</button><button onclick="postNotice()" style="background:#f59e0b;color:white;border:none">${iconSvg('pin',12)} Pin it</button></div></div>`;}
 function postNotice(){const text=document.getElementById('notice-ta')?.value.trim();if(!text)return;state.notices=[{id:genId(),text,author:member,ts:Date.now()},...(state.notices||[])];drafts.notice='';showNoticeCompose=false;renderContent();save();}
@@ -1670,7 +1904,8 @@ function buildPollCompose(){const opts=pollOpts.map((o,i)=>`<div class="poll-opt
 function postPoll(){const q=(pollQ||'').trim(),opts=pollOpts.filter(o=>o.trim());if(!q||opts.length<2)return;const poll={id:genId(),q,opts:opts.map(o=>({text:o,votes:{}})),author:member,ts:Date.now(),type:'poll'};state.notes=[poll,...state.notes];showPollCompose=false;pollOpts=['',''];pollQ='';renderContent();save();queueNotif('msg',member,q);}
 function votePoll(nid,oi){state.notes=state.notes.map(n=>{if(n.id!==nid||n.type!=='poll')return n;const opts=n.opts.map(o=>{const v={...(o.votes||{})};delete v[member];return{...o,votes:v};}).map((o,i)=>i===oi?{...o,votes:{...(o.votes||{}),[member]:true}}:o);return{...n,opts};});haptic(10);renderContent();save();}
 function renderPollBubble(n,auth,isMe){const total=n.opts.reduce((s,o)=>s+Object.keys(o.votes||{}).length,0);const myV=n.opts.findIndex(o=>(o.votes||{})[member]);const opts=n.opts.map((o,i)=>{const cnt=Object.keys(o.votes||{}).length,pct=total?Math.round(cnt/total*100):0,voted=myV===i;return`<div class="poll-option${voted?' voted':''}" style="color:${voted?auth.color:'var(--sub)'}" onclick="votePoll('${n.id}',${i})"><div class="poll-bar" style="width:${pct}%;background:${auth.color}"></div><div class="poll-inner"><span>${esc(o.text)}${voted?' ✓':''}</span><span class="poll-pct">${total?pct+'%':''}</span></div></div>`;}).join('');return`<div class="nwrap ${isMe?'mine':'theirs'}" data-noteid="${n.id}"><div class="nhdr" style="flex-direction:${isMe?'row-reverse':'row'}"><div class="av" style="width:26px;height:26px;font-size:10px;color:${auth.color};background:${auth.color}18;border:2px solid ${auth.color}44;border-radius:28%">${auth.initials}</div><span class="nauthor" style="color:${auth.color}">${esc(n.author)}</span><span class="ntime">${timeAgo(n.ts)}</span></div><div class="nbubble ${isMe?'mine':'theirs'}" style="min-width:200px;background:${isMe?auth.color+'18':'var(--surf2)'};border-color:${isMe?auth.color+'44':'var(--brd)'}${!isMe?`;border-left-color:${auth.color}88`:''}"><div class="poll-question">${n.pinned?`<span style="color:#f59e0b;font-size:10px;margin-right:6px;display:inline-flex;align-items:center;gap:3px;vertical-align:middle">${iconSvg('pin',10)}PINNED</span>`:''}${esc(n.q)}</div>${opts}<div class="poll-voters">${total} vote${total!==1?'s':''}</div></div></div>`;}
-function togglePinPoll(nid){state.notes=state.notes.map(n=>n.id!==nid?n:{...n,pinned:!n.pinned});haptic(8);renderContent();save();}
+function togglePinNote(nid){state.notes=state.notes.map(n=>n.id!==nid?n:{...n,pinned:!n.pinned});haptic(8);renderContent();save();}
+function togglePinPoll(nid){return togglePinNote(nid);}
 function showPicker(e,nid){e.stopPropagation();document.querySelectorAll('.epicker').forEach(p=>p.remove());if(openPicker===nid){openPicker=null;return;}openPicker=nid;const rbar=document.getElementById('rb'+nid);if(!rbar)return;const p=document.createElement('div');p.className='epicker';p.innerHTML=EMOJIS.map(em=>`<button class="eopt" onclick="toggleRx('${nid}','${em}');closePicker()">${em}</button>`).join('');p.style.visibility='hidden';p.style.left='-9999px';p.style.top='-9999px';document.body.appendChild(p);const pw=p.offsetWidth,ph=p.offsetHeight;const rect=rbar.getBoundingClientRect();const isMine=!!rbar.closest('.nwrap.mine');const margin=8;let left=isMine?(rect.right-pw):rect.left;left=Math.max(margin,Math.min(left,window.innerWidth-pw-margin));let top=rect.top-ph-6;if(top<60)top=rect.bottom+6;p.style.left=left+'px';p.style.top=top+'px';p.style.visibility='';const close=()=>closePicker();const cnt=document.getElementById('content');if(cnt)cnt.addEventListener('scroll',close,{once:true,passive:true});window.addEventListener('resize',close,{once:true});setTimeout(()=>document.addEventListener('click',close,{once:true}),10);}
 function closePicker(){document.querySelectorAll('.epicker').forEach(p=>p.remove());openPicker=null;}
 function toggleRx(nid,emoji){closePicker();haptic(8);state.notes=state.notes.map(n=>{if(n.id!==nid)return n;const rx={...(n.reactions||{})},who=[...(rx[emoji]||[])];const idx=who.indexOf(member);if(idx>=0)who.splice(idx,1);else who.push(member);if(!who.length)delete rx[emoji];else rx[emoji]=who;return{...n,reactions:rx};});renderContent();save();}
@@ -1736,14 +1971,137 @@ function startReply(nid){const n=state.notes.find(x=>x.id===nid);if(!n||n.type==
 function cancelReply(){replyingTo=null;renderContent();}
 function scrollToNote(nid){const el=document.querySelector(`.nwrap[data-noteid="${nid}"]`);if(!el)return;el.scrollIntoView({behavior:'smooth',block:'center'});const bub=el.querySelector('.nbubble');if(!bub)return;bub.style.transition='box-shadow .25s ease';const orig=bub.style.boxShadow;bub.style.boxShadow='0 0 0 3px rgba(96,165,250,.55)';setTimeout(()=>{bub.style.boxShadow=orig||'';},900);}
 function shopModeActive(){if(!state.shopMode)return null;if(Date.now()-state.shopMode.startedAt>SHOP_MODE_TTL)return null;return state.shopMode;}
-function startShopMode(){if(!member)return;if(shopModeActive())return;if(!confirm('Notify the family you’re at the shops?'))return;state.shopMode={who:member,startedAt:Date.now()};haptic([10,40,15,40,10]);renderContent();renderTabs();save();sendPushNotif(`${member} is at the shops!`,'Add anything you need to the list now — tap to open',member);}
+function startShopMode(){
+  if(!member)return;if(shopModeActive())return;
+  showShopModeConfirm(()=>{
+    state.shopMode={who:member,startedAt:Date.now()};
+    haptic([10,40,15,40,10]);
+    playShopModeEntryAnim();
+    renderContent();renderTabs();save();
+    sendPushNotif(`${member} is at the shops!`,'Add anything you need to the list now — tap to open',member);
+  });
+}
+function showShopModeConfirm(onYes){
+  if(document.querySelector('.app-popup-back'))return;
+  const m=member?getMem(member):MEMBERS[0];
+  const back=document.createElement('div');back.className='app-popup-back';
+  back.innerHTML=`<div class="app-popup" style="text-align:center;max-width:300px"><div class="app-popup-ico" style="background:linear-gradient(145deg,${m.color},${m.color}aa);box-shadow:0 8px 28px ${m.color}55">${iconSvg('cart',26)}</div><div class="app-popup-title">Going to the shops?</div><div class="app-popup-sub">The family will get a push — anyone can add things to your list while you're there.</div><div style="display:flex;gap:8px;margin-top:14px"><button class="app-popup-dismiss" style="flex:1;margin-top:0;background:var(--surf2);border:1px solid var(--brd);border-radius:11px;color:var(--sub);padding:11px 0;font-weight:700" data-cancel>Not yet</button><button class="app-popup-btn" style="flex:1;background:linear-gradient(145deg,${m.color},${m.color}cc)" data-yes>Let them know</button></div></div>`;
+  document.body.appendChild(back);
+  requestAnimationFrame(()=>back.classList.add('open'));
+  const close=()=>back.remove();
+  back.querySelector('[data-cancel]').onclick=close;
+  back.querySelector('[data-yes]').onclick=()=>{back.remove();onYes();};
+  back.addEventListener('click',e=>{if(e.target===back)close();});
+}
+function playShopModeEntryAnim(){
+  try{
+    const m=member?getMem(member):MEMBERS[0];
+    const layer=document.createElement('div');layer.className='shop-anim-layer';
+    layer.innerHTML=`<div class="shop-anim-burst" style="--c:${m.color}"></div><div class="shop-anim-cart" style="color:${m.color}">${iconSvg('cart',64)}</div>`;
+    document.body.appendChild(layer);
+    setTimeout(()=>{if(layer.parentNode)layer.remove();},1200);
+  }catch(e){}
+}
 function endShopMode(){const sm=shopModeActive();if(!sm||sm.who!==member)return;state.shopMode=null;haptic(8);renderContent();renderTabs();save();}
 const SHOP_PING_COOLDOWN=120000;
 function _pingState(sm){if(!sm)return{can:false,label:''};const last=sm.lastPing||0;const since=Date.now()-last;if(since>=SHOP_PING_COOLDOWN)return{can:true,label:'Ping again'};const m=Math.max(1,Math.ceil((SHOP_PING_COOLDOWN-since)/60000));return{can:false,label:`Pinged ${m}m ago`};}
 function pingShop(){const sm=shopModeActive();if(!sm||sm.who!==member)return;if(!_pingState(sm).can)return;state.shopMode={...sm,lastPing:Date.now()};haptic([8,40,15,40,8]);renderContent();renderTabs();save();sendPushNotif(`${member} is still at the shops!`,'Last call — anything else? Tap to open',member);}
 function _sessionItems(sm){if(!sm)return[];return state.shop.filter(it=>it&&!it.done&&(it.ts||0)>=sm.startedAt);}
 function renderShopModeUI(){const sm=shopModeActive();if(!sm)return'';const m=getMem(sm.who);const time=timeAgo(sm.startedAt);const isMine=sm.who===member;const ping=_pingState(sm);const pingBtn=isMine?`<button class="shop-mode-ping" ${ping.can?'':'disabled'} onclick="pingShop()">${esc(ping.label)}</button>`:'';const endBtn=isMine?`<button class="shop-mode-end" onclick="endShopMode()">End</button>`:'';const actions=isMine?`<div class="shop-mode-actions">${pingBtn}${endBtn}</div>`:'';const banner=`<div class="shop-mode-banner" style="border-color:${m.color}88;background:${m.color}14"><span class="shop-mode-icon-big" style="background:${m.color}22;color:${m.color}">${iconSvg('cart',16)}</span><div class="shop-mode-text">${isMine?'You’re':`<b style="color:${m.color}">${esc(sm.who)}</b> is`} at the shops <span class="shop-mode-time">· started ${time}</span></div>${actions}</div>`;const items=_sessionItems(sm);if(!items.length)return banner;const rows=items.map(it=>{const am=getMem(it.addedBy);const qty=it.qty&&it.qty>1?`<span class="shop-mode-add-qty">×${it.qty}</span>`:'';return`<div class="shop-mode-add-row" onclick="toggleItem('${it.id}')"><button class="shop-mode-add-chk" style="border-color:${am.color}55"></button><span class="shop-mode-add-text">${esc(it.text)}${qty}</span><span class="shop-mode-add-by" style="color:${am.color}">${esc(it.addedBy)}</span></div>`;}).join('');const hdr=`<div class="shop-mode-additions-hdr">${items.length} added since ${isMine?'you arrived':`${esc(sm.who)} arrived`}</div>`;const additions=`<div class="shop-mode-additions" style="border-color:${m.color}55">${hdr}${rows}</div>`;return banner+additions;}
-function viewPhoto(b64){const m=document.createElement('div');m.className='photo-modal';m.innerHTML=`<img src="${b64}"><button class="photo-modal-close" onclick="this.parentElement.remove()">✕</button>`;m.onclick=e=>{if(e.target===m)m.remove();};document.body.appendChild(m);}
+function viewPhoto(src){
+  const m=document.createElement('div');m.className='photo-modal';
+  m.innerHTML=`<div class="photo-hint">Swipe to close · pinch to zoom</div><img src="${src}" draggable="false"><button class="photo-modal-close" type="button" aria-label="Close">✕</button>`;
+  document.body.appendChild(m);
+  const img=m.querySelector('img');
+  const closeBtn=m.querySelector('.photo-modal-close');
+  let scale=1,tx=0,ty=0,startScale=1,startTx=0,startTy=0;
+  let mode=null; // 'drag' | 'pinch'
+  let p0=null,p1=null,startDist=0,startMidX=0,startMidY=0;
+  let dragSX=0,dragSY=0;
+  function apply(transition){
+    img.style.transition=transition||'none';
+    img.style.transform=`translate3d(${tx}px,${ty}px,0) scale(${scale})`;
+  }
+  function close(){
+    m.style.transition='opacity .2s ease';m.style.opacity='0';
+    setTimeout(()=>{if(m.parentNode)m.remove();},220);
+  }
+  function dismissIfBigDrag(){
+    const dist=Math.hypot(tx,ty);
+    if(scale<=1.05&&dist>110){
+      const dirY=ty>=0?1:-1;
+      img.style.transition='transform .26s ease,opacity .26s ease';
+      img.style.transform=`translate3d(${tx*1.6}px,${dirY*window.innerHeight*0.9}px,0) scale(${scale})`;
+      img.style.opacity='0';
+      m.style.transition='opacity .26s ease';m.style.opacity='0';
+      setTimeout(()=>{if(m.parentNode)m.remove();},270);
+      return true;
+    }
+    return false;
+  }
+  function snapBack(){
+    if(scale<1){scale=1;}
+    tx=0;ty=0;
+    apply('transform .26s cubic-bezier(.22,1,.36,1)');
+  }
+  function onPointerDown(e){
+    if(e.target===closeBtn)return;
+    m.setPointerCapture&&m.setPointerCapture(e.pointerId);
+    const pt={id:e.pointerId,x:e.clientX,y:e.clientY};
+    if(!p0){p0=pt;dragSX=pt.x;dragSY=pt.y;startTx=tx;startTy=ty;startScale=scale;mode='drag';}
+    else if(!p1){p1=pt;mode='pinch';startDist=Math.hypot(p0.x-p1.x,p0.y-p1.y)||1;startScale=scale;startTx=tx;startTy=ty;startMidX=(p0.x+p1.x)/2;startMidY=(p0.y+p1.y)/2;}
+  }
+  function onPointerMove(e){
+    if(!p0)return;
+    if(p0&&p0.id===e.pointerId){p0.x=e.clientX;p0.y=e.clientY;}
+    else if(p1&&p1.id===e.pointerId){p1.x=e.clientX;p1.y=e.clientY;}
+    else return;
+    if(mode==='pinch'&&p0&&p1){
+      const dist=Math.hypot(p0.x-p1.x,p0.y-p1.y)||1;
+      scale=Math.max(0.6,Math.min(5,startScale*(dist/startDist)));
+      const midX=(p0.x+p1.x)/2,midY=(p0.y+p1.y)/2;
+      tx=startTx+(midX-startMidX);ty=startTy+(midY-startMidY);
+      apply();
+    }else if(mode==='drag'&&p0&&p0.id===e.pointerId){
+      tx=startTx+(p0.x-dragSX);ty=startTy+(p0.y-dragSY);
+      // Fade background as user drags away (only when not zoomed-in)
+      if(scale<=1.05){
+        const d=Math.min(1,Math.hypot(tx,ty)/240);
+        m.style.background=`rgba(0,0,0,${0.9-d*0.55})`;
+      }
+      apply();
+    }
+  }
+  function onPointerUp(e){
+    if(p1&&p1.id===e.pointerId){p1=null;mode=p0?'drag':null;if(p0){startTx=tx;startTy=ty;startScale=scale;dragSX=p0.x;dragSY=p0.y;}return;}
+    if(p0&&p0.id===e.pointerId){
+      p0=p1;p1=null;
+      if(p0){mode='drag';startTx=tx;startTy=ty;startScale=scale;dragSX=p0.x;dragSY=p0.y;return;}
+      mode=null;
+      // Decide: dismiss, snap-back, or stay zoomed
+      m.style.transition='background .22s ease';m.style.background='';
+      if(scale<=1.05){if(!dismissIfBigDrag())snapBack();}
+      else{apply('transform .2s ease');}
+    }
+  }
+  img.addEventListener('dblclick',()=>{
+    if(scale>1.1){scale=1;tx=0;ty=0;}else{scale=2.2;tx=0;ty=0;}
+    apply('transform .25s ease');
+  });
+  m.addEventListener('pointerdown',onPointerDown);
+  m.addEventListener('pointermove',onPointerMove);
+  m.addEventListener('pointerup',onPointerUp);
+  m.addEventListener('pointercancel',onPointerUp);
+  m.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const delta=-e.deltaY*0.0025;
+    scale=Math.max(0.6,Math.min(5,scale*(1+delta)));
+    apply('transform .08s linear');
+  },{passive:false});
+  closeBtn.onclick=close;
+  m.addEventListener('click',e=>{if(e.target===m&&scale<=1.05)close();});
+  document.addEventListener('keydown',function esc(ev){if(ev.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
+}
 function addItem(){const inp=document.getElementById('mi'),raw=inp?.value.trim();if(!raw)return;const isS=tabIdx===0,urg=isS?shopUrg:todoUrg;const text=raw;const autoCat=isS?suggestCat(text):'';const it={id:genId(),text,urgency:urg,cat:autoCat,addedBy:member,done:false,ts:Date.now()};if(isS)it.qty=1;if(isS)state.shop=[it,...state.shop];else state.todo=[it,...state.todo];if(isS){shopUrg=0;}else{todoUrg=0;}if(isS){state.itemHistory=state.itemHistory||{shop:{},todo:{}};state.itemHistory.shop=state.itemHistory.shop||{};const histK=_histK(text);if(histK)state.itemHistory.shop[histK]=(state.itemHistory.shop[histK]||0)+1;}inp.value='';drafts[isS?'shop':'todo']='';shouldFocus=true;haptic(8);renderTabs();renderContent();save();const sm=isS?shopModeActive():null;if(sm){sendPushNotif(`${member} added: ${text}`,`Quick — ${sm.who} is at the shops`,member);}else{queueNotif(isS?'shop':'todo',member,text);}}
 function setQty(e,id,delta){if(e){e.stopPropagation();}haptic(6);state.shop=state.shop.map(i=>i.id!==id?i:{...i,qty:Math.max(1,(i.qty||1)+delta)});renderContent();save();}
 function setUrg(i){const inp=document.getElementById('mi'),saved=inp?inp.value:'';if(tabIdx===0)shopUrg=i;else todoUrg=i;renderContent();const mi=document.getElementById('mi');if(mi&&saved){mi.value=saved;mi.focus();}}
@@ -1755,8 +2113,54 @@ function postNote(){const inp=document.getElementById('ni');const text=(inp?.val
 function delNote(id){state.notes=state.notes.filter(n=>n.id!==id);renderContent();save();}
 function setFilter(n){const arr=tabIdx===0?shopFilters:todoFilters;if(n==='All'){arr.length=0;}else{const i=arr.indexOf(n);if(i>=0)arr.splice(i,1);else arr.push(n);}renderContent();if(filterSheetOpen)renderFilterSheetContent();}
 function hasActiveFilters(){if(tabIdx===0)return shopFilters.length>0||shopCats.length>0||shopSort!=='recency-desc';if(tabIdx===1)return todoFilters.length>0||todoSort!=='urgency-desc';return false;}
-function openFilterSheet(){filterSheetOpen=true;renderFilterSheetContent();document.getElementById('fsheet').classList.add('open');document.getElementById('fsheet-back').classList.add('open');}
-function closeFilterSheet(){filterSheetOpen=false;document.getElementById('fsheet').classList.remove('open');document.getElementById('fsheet-back').classList.remove('open');}
+function openFilterSheet(){filterSheetOpen=true;renderFilterSheetContent();const sh=document.getElementById('fsheet');sh.classList.add('open');document.getElementById('fsheet-back').classList.add('open');bindFilterSheetDrag(sh);}
+function closeFilterSheet(){filterSheetOpen=false;const sh=document.getElementById('fsheet');if(sh){sh.style.transform='';sh.style.transition='';sh.classList.remove('open');}document.getElementById('fsheet-back').classList.remove('open');}
+function bindFilterSheetDrag(sh){
+  if(!sh||sh._dragBound)return;sh._dragBound=true;
+  let sy=0,sx=0,startTop=0,dragging=false,pid=null,startedOnGrip=false;
+  sh.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    // Allow drag from the grip area OR from anywhere when the sheet is at scrollTop 0.
+    const tgt=e.target;
+    startedOnGrip=tgt.classList&&(tgt.classList.contains('fsheet-grip')||tgt.classList.contains('fsheet-hdr')||tgt.classList.contains('fsheet-title'));
+    if(!startedOnGrip&&sh.scrollTop>2)return;
+    if(tgt.closest('input,select,textarea,button'))return;
+    sy=e.clientY;sx=e.clientX;startTop=sh.scrollTop;dragging=false;pid=e.pointerId;
+    sh._armed=true;
+  });
+  sh.addEventListener('pointermove',e=>{
+    if(!sh._armed||pid!==e.pointerId)return;
+    const dy=e.clientY-sy,dx=e.clientX-sx;
+    if(!dragging){
+      if(Math.abs(dx)>Math.abs(dy)*1.4){sh._armed=false;return;}
+      if(dy<6)return;
+      dragging=true;sh.style.transition='none';
+      try{sh.setPointerCapture(e.pointerId);}catch(_){}
+    }
+    if(dy<0)return;
+    sh.style.transform=`translateY(${dy}px)`;
+    if(e.cancelable){try{e.preventDefault();}catch(_){}}
+  },{passive:false});
+  function end(e){
+    if(!sh._armed){return;}
+    sh._armed=false;
+    if(!dragging){return;}
+    dragging=false;
+    const dy=e.clientY-sy;
+    const h=sh.offsetHeight||window.innerHeight;
+    if(dy>Math.min(140,h*0.25)){
+      sh.style.transition='transform .26s cubic-bezier(.4,0,.2,1)';
+      sh.style.transform='translateY(100%)';
+      setTimeout(()=>{closeFilterSheet();sh.style.transition='';sh.style.transform='';},220);
+    }else{
+      sh.style.transition='transform .26s cubic-bezier(.22,1,.36,1)';
+      sh.style.transform='';
+      setTimeout(()=>{sh.style.transition='';},270);
+    }
+  }
+  sh.addEventListener('pointerup',end);
+  sh.addEventListener('pointercancel',end);
+}
 function clearFilters(){if(tabIdx===0){shopFilters.length=0;shopCats.length=0;shopSort='recency-desc';}else if(tabIdx===1){todoFilters.length=0;todoSort='urgency-desc';}renderContent();renderFilterSheetContent();}
 function renderFilterSheetContent(){const sheet=document.getElementById('fsheet');if(!sheet)return;if(tabIdx>=2){sheet.innerHTML='';return;}const isS=tabIdx===0,filters=isS?shopFilters:todoFilters,sort=isS?shopSort:todoSort,acc=TABS[tabIdx].accent;const pills=['All',...MEMBERS.map(x=>x.name)].map(n=>{const mx=n==='All'?null:getMem(n),active=n==='All'?filters.length===0:filters.includes(n),col=mx?mx.color:acc;return`<button class="f-btn" onclick="setFilter('${n}')" style="border-color:${active?col:'var(--brd)'};background:${active?col+'18':'transparent'};color:${active?col:'var(--muted)'}">${mx?`<div class="av" style="width:12px;height:12px;font-size:5.5px;color:${mx.color};background:${mx.color}18;border:1px solid ${mx.color}44;border-radius:30%">${mx.initials}</div>`:''}${esc(n)}</button>`;}).join('');const catPills=isS?['All',...CATS.map(c=>c.id)].map(cid=>{const ci=CATS.find(c=>c.id===cid),active=cid==='All'?shopCats.length===0:shopCats.includes(cid);return`<button class="f-btn" onclick="setCat('${cid}')" style="border-color:${active?acc:'var(--brd)'};background:${active?acc+'18':'transparent'};color:${active?acc:'var(--muted)'}">${cid==='All'?'All':ci.label}</button>`;}).join(''):'';sheet.innerHTML=`<div class="fsheet-grip"></div><div class="fsheet-hdr"><div class="fsheet-title">Filter &amp; Sort</div><button class="fsheet-done" onclick="closeFilterSheet()">Done</button></div><div class="fsheet-sec"><div class="fsheet-lbl">Sort by</div><select class="sort-sel" style="color:${acc};border-color:${acc}44" onchange="setSort(this.value)">${SORTS.map(o=>`<option value="${o.key}"${sort===o.key?' selected':''}>${o.label}</option>`).join('')}</select></div><div class="fsheet-sec"><div class="fsheet-lbl">Show items from</div><div class="fsheet-pills">${pills}</div></div>${isS?`<div class="fsheet-sec"><div class="fsheet-lbl">Category</div><div class="fsheet-pills">${catPills}</div></div>`:''}${hasActiveFilters()?`<button class="fsheet-clear" onclick="clearFilters()">Reset to defaults</button>`:''}`;}
 function isStandalone(){return window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;}
@@ -1770,6 +2174,22 @@ function checkVersionUpdate(){
   }
 }
 function retagOthers(){if(!state||!Array.isArray(state.shop)||!state.shop.length)return;let changed=false;state.shop=state.shop.map(it=>{if(it&&it.cat==='other'&&it.text){const n=suggestCat(it.text);if(n&&n!=='other'){changed=true;return{...it,cat:n};}}return it;});if(changed){renderContent();save();}}
+function _parseChangelogPoints(raw){
+  // Convert a changelog entry into a clean bullet list. Strategy:
+  // 1. Strip leading lead-in clauses ("Three follow-ups to vX.X.X:")
+  // 2. Split on numbered markers like "(1)" "(2)" first — that's how the
+  //    changelog already structures lists. Fall back to sentence-split.
+  // 3. Trim each, drop empties, cap to ~8 to keep the popup short.
+  let s=(raw||'').replace(/\s+/g,' ').trim();
+  s=s.replace(/^[^:(]*?(follow[- ]ups?|small fixes|fixes|changes|tweaks|polish|bundle)[^:(]*[:.]/i,'').trim();
+  let parts;
+  if(/\(\d+\)/.test(s)){
+    parts=s.split(/\s*\(\d+\)\s*/).map(x=>x.trim()).filter(Boolean);
+  }else{
+    parts=s.split(/(?<=[.!?])\s+(?=[A-Z(])/).map(x=>x.trim()).filter(Boolean);
+  }
+  return parts.map(p=>p.replace(/^[—–-]\s*/,'').replace(/\s+/g,' ').trim()).filter(p=>p.length>3).slice(0,8);
+}
 async function showUpdatePopup(prevVer){
   if(document.querySelector('.app-popup-back'))return;
   let notes='';
@@ -1780,11 +2200,11 @@ async function showUpdatePopup(prevVer){
     const m=html.match(re);
     if(m)notes=m[1].replace(/\n\s{10,}/g,' ').trim();
   }catch(e){}
-  if(!notes)notes='New improvements and fixes';
-  const bullets=notes.split(/,\s*(?=[A-Z"])/).map(s=>s.trim()).filter(Boolean).map(s=>'• '+s).join('<br>');
+  const points=notes?_parseChangelogPoints(notes):[];
   const back=document.createElement('div');
   back.className='app-popup-back';
-  back.innerHTML=`<div class="app-popup"><div class="app-popup-ico">✨</div><div class="app-popup-title">What's New</div><div class="app-popup-sub">${esc(prevVer)} → ${VER}</div><div class="app-popup-body">${bullets}</div><button class="app-popup-btn" onclick="this.closest('.app-popup-back').remove();nudgeLayout()">Got it</button></div>`;
+  const list=points.length?points.map(p=>`<li>${esc(p)}</li>`).join(''):`<li>${esc(notes||'Lots of small improvements and fixes.')}</li>`;
+  back.innerHTML=`<div class="app-popup whatsnew"><div class="app-popup-ico">✨</div><div class="app-popup-title">What's new</div><div class="app-popup-sub">${esc(prevVer)} → ${esc(VER)}</div><ul class="whatsnew-list">${list}</ul><button class="app-popup-btn" onclick="this.closest('.app-popup-back').remove();nudgeLayout()">Got it</button></div>`;
   document.body.appendChild(back);
   requestAnimationFrame(()=>{back.classList.add('open');nudgeLayout();});
 }
@@ -1808,7 +2228,34 @@ function showInstallPopup(){
   requestAnimationFrame(()=>back.classList.add('open'));
 }
 async function initPush(){if(!('serviceWorker' in navigator)||!('PushManager' in window))return;if(Notification.permission!=='granted')return;try{if(!swReg)swReg=await navigator.serviceWorker.register('/cheema-family-hub/sw.js',{scope:'/cheema-family-hub/'});await navigator.serviceWorker.ready;let sub=await swReg.pushManager.getSubscription();if(!sub){try{sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUB)});}catch(e){return;}}const key=sub.endpoint.split('/').pop().replace(/[^a-zA-Z0-9]/g,'').slice(-20)||'sub'+Date.now();await fetch(`https://cheema-79800-default-rtdb.europe-west1.firebasedatabase.app/subscriptions/${key}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...sub.toJSON(),member,refreshedAt:Date.now()})});}catch(e){}}
-async function init(){try{syncDvh();window.addEventListener('resize',syncDvh);window.addEventListener('orientationchange',syncDvh);window.addEventListener('load',()=>{syncDvh();setTimeout(syncDvh,80);setTimeout(syncDvh,400);});if(window.visualViewport){window.visualViewport.addEventListener('resize',syncDvh);}}catch(e){}try{initTheme();}catch(e){}showScreen('loading');const cache=loadCache();if(cache){state=cache.state;}try{await initSW();}catch(e){}try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{},shopBlocked:[]},shopMode:d.shopMode||null};lastTs=d.updatedAt;cacheState();setStatus('live');setOffline(false);}catch(e){if(!cache){setStatus('error');renderLogin();showScreen('login');return;}setStatus('offline');setOffline(true);}try{renderLogin();const saved=localStorage.getItem('cfh_member');const ok=saved&&MEMBERS.find(m=>m.name===saved);if(ok){selectMember(saved);}else{showScreen('login');}startPoll();}catch(e){showScreen('login');}try{initPush();}catch(e){}try{checkVersionUpdate();}catch(e){}try{checkInstallPrompt();}catch(e){}window.addEventListener('online',()=>{setOffline(false);setStatus('live');save();});window.addEventListener('offline',()=>{setOffline(true);setStatus('offline');});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}else if(member){try{initPush();}catch(e){}if(!pollTimer)startPoll();(async()=>{try{const d=await fbRead();if(d.updatedAt>lastTs){lastTs=d.updatedAt;state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{},shopBlocked:[]},shopMode:d.shopMode||null};cacheState();renderContent();renderTabs();}setOffline(false);}catch(e){setOffline(!navigator.onLine);}})();}});}
+function playAppOpenSplash(){
+  try{
+    if(sessionStorage.getItem('cfh-splash'))return;
+    sessionStorage.setItem('cfh-splash','1');
+    const o=document.createElement('div');o.className='splash-overlay';
+    o.innerHTML=`<div class="splash-logo"><div class="splash-ring"></div><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>`;
+    document.body.appendChild(o);
+    setTimeout(()=>{o.classList.add('fade');setTimeout(()=>{if(o.parentNode)o.remove();},480);},900);
+  }catch(e){}
+}
+async function init(){try{playAppOpenSplash();}catch(e){}try{syncDvh();window.addEventListener('resize',syncDvh);window.addEventListener('orientationchange',syncDvh);window.addEventListener('load',()=>{syncDvh();setTimeout(syncDvh,80);setTimeout(syncDvh,400);});if(window.visualViewport){window.visualViewport.addEventListener('resize',syncDvh);}}catch(e){}try{initTheme();}catch(e){}showScreen('loading');const cache=loadCache();if(cache){state=cache.state;}try{await initSW();}catch(e){}try{const d=await fbRead();state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{},shopBlocked:[]},shopMode:d.shopMode||null};lastTs=d.updatedAt;
+// Reset the legacy permanent suggestion-block list once — past dismissals
+// shouldn't keep an item out of suggestions forever, only for the session.
+const wasBlocked=(state.itemHistory&&Array.isArray(state.itemHistory.shopBlocked))?state.itemHistory.shopBlocked.length:0;
+if(wasBlocked>0){state.itemHistory.shopBlocked=[];try{save();}catch(e){}}
+cacheState();setStatus('live');setOffline(false);}catch(e){if(!cache){setStatus('error');renderLogin();showScreen('login');return;}setStatus('offline');setOffline(true);}try{renderLogin();const saved=localStorage.getItem('cfh_member');const ok=saved&&MEMBERS.find(m=>m.name===saved);if(ok){selectMember(saved);}else{showScreen('login');}startPoll();}catch(e){showScreen('login');}try{initPush();}catch(e){}try{checkVersionUpdate();}catch(e){}try{checkInstallPrompt();}catch(e){}window.addEventListener('online',()=>{setOffline(false);setStatus('live');save();});window.addEventListener('offline',()=>{setOffline(true);setStatus('offline');});
+// Keyboard tab navigation for desktop users — Ctrl/Cmd + Arrow switches tabs.
+window.addEventListener('keydown',e=>{
+  if(!member)return;
+  const t=e.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable))return;
+  if(document.querySelector('.app-popup-back')||filterSheetOpen||transitioning)return;
+  if((e.ctrlKey||e.metaKey)&&(e.key==='ArrowRight'||e.key==='ArrowLeft')){
+    e.preventDefault();
+    if(e.key==='ArrowRight'&&tabIdx<TABS.length-1)setTab(tabIdx+1);
+    else if(e.key==='ArrowLeft'&&tabIdx>0)setTab(tabIdx-1);
+  }
+});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}else if(member){try{initPush();}catch(e){}if(!pollTimer)startPoll();(async()=>{try{const d=await fbRead();if(d.updatedAt>lastTs){lastTs=d.updatedAt;state={shop:d.shop,todo:d.todo,notes:d.notes,notices:d.notices,itemHistory:d.itemHistory||{shop:{},todo:{},shopBlocked:[]},shopMode:d.shopMode||null};cacheState();renderContent();renderTabs();}setOffline(false);}catch(e){setOffline(!navigator.onLine);}})();}});}
 init();
 </script>
 </body>
